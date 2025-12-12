@@ -1,6 +1,5 @@
-# models.py
-
 from django.db import models
+from django.conf import settings
 from django.core.validators import MinLengthValidator
 from django.core.exceptions import ValidationError
 
@@ -18,7 +17,6 @@ class Bus(models.Model):
         ('minibus', 'Маршрутка'),
     )
     
-    # Государственный номер автобуса
     registration_number = models.CharField(
         max_length=20,
         unique=True,
@@ -27,14 +25,12 @@ class Bus(models.Model):
         help_text='Например: 01ABC123, KG 123 BCD'
     )
     
-    # Тип транспорта
     bus_type = models.CharField(
         max_length=20,
         choices=BUS_TYPE_CHOICES,
         verbose_name='Тип транспорта'
     )
     
-    # Модель автобуса
     model = models.CharField(
         max_length=100,
         blank=True,
@@ -43,7 +39,6 @@ class Bus(models.Model):
         help_text='Например: Mercedes-Benz Sprinter, ПАЗ-32054'
     )
     
-    # Вместимость (количество пассажиров)
     capacity = models.IntegerField(
         blank=True,
         null=True,
@@ -51,7 +46,6 @@ class Bus(models.Model):
         help_text='Количество пассажиров'
     )
     
-    # Маршрут, к которому привязан автобус
     route = models.ForeignKey(
         'route.Route',
         on_delete=models.SET_NULL,
@@ -62,9 +56,8 @@ class Bus(models.Model):
         help_text='Маршрут, на котором работает автобус'
     )
     
-    # Водитель, назначенный на автобус
     assigned_driver = models.ForeignKey(
-        'user.User',
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -74,20 +67,17 @@ class Bus(models.Model):
         help_text='Водитель, закреплённый за этим автобусом'
     )
     
-    # Активен ли автобус
     is_active = models.BooleanField(
         default=True,
         verbose_name='Активен',
         help_text='Если False, автобус на ремонте или списан'
     )
     
-    # Дата добавления в систему
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name='Дата создания'
     )
     
-    # Дата обновления
     updated_at = models.DateTimeField(
         auto_now=True,
         verbose_name='Дата обновления'
@@ -99,7 +89,6 @@ class Bus(models.Model):
         ordering = ['registration_number']
         indexes = [
             models.Index(fields=['registration_number']),
-            models.Index(fields=['route']),
             models.Index(fields=['is_active']),
         ]
     
@@ -111,11 +100,9 @@ class Bus(models.Model):
         """
         Валидация данных.
         """
-        # Проверка что capacity положительное число
         if self.capacity is not None and self.capacity <= 0:
             raise ValidationError('Вместимость должна быть положительным числом')
         
-        # Проверка что assigned_driver действительно водитель
         if self.assigned_driver and self.assigned_driver.role != 'driver':
             raise ValidationError('Назначенный пользователь должен быть водителем')
     
@@ -143,7 +130,7 @@ class Bus(models.Model):
         """
         Возвращает последнюю известную координату автобуса.
         """
-        from buslocation.models import BusLocation
+        from busLocation.models import BusLocation
         
         return BusLocation.objects.filter(
             bus=self
