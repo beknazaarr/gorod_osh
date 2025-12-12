@@ -1,11 +1,9 @@
-from django.shortcuts import render
-
-# Create your views here.
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils import timezone
+from django.db.models import OuterRef, Subquery
 from datetime import timedelta
 from .models import BusLocation
 from shift.models import Shift
@@ -13,6 +11,7 @@ from .serializers import (
     BusLocationSerializer, BusLocationCreateSerializer,
     BusLocationListSerializer, BusLocationTrackSerializer
 )
+from user.permissions import IsDriver
 
 
 class BusLocationViewSet(viewsets.ModelViewSet):
@@ -50,6 +49,8 @@ class BusLocationViewSet(viewsets.ModelViewSet):
         """
         if self.action in ['list', 'retrieve', 'latest', 'bus_history', 'shift_locations']:
             return [AllowAny()]
+        elif self.action in ['create', 'send']:
+            return [IsDriver()]
         return [IsAuthenticated()]
     
     def create(self, request, *args, **kwargs):
@@ -57,16 +58,12 @@ class BusLocationViewSet(viewsets.ModelViewSet):
         Создать запись координаты.
         Доступно только водителям с активной сменой.
         """
-        # Проверяем что пользователь - водитель
-        if request.user.role != 'driver':
-            return Response(
-                {'detail': 'Только водители могут отправлять координаты'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
         # Получаем активную смену
         try:
-            shift = Shift.objects.get(driver=request.user, status='active')
+            shift = Shift.objects.select_related('bus', 'bus__route').get(
+                driver=request.user, 
+                status='active'
+            )
         except Shift.DoesNotExist:
             return Response(
                 {'detail': 'У вас нет активной смены'},
@@ -101,14 +98,27 @@ class BusLocationViewSet(viewsets.ModelViewSet):
     def latest(self, request):
         """
         Получить последние координаты всех активных автобусов.
+        Оптимизирован: один запрос вместо N+1.
         GET /api/locations/latest/
         
         Query params:
         - route: ID маршрута (опционально)
         - bus_type: тип транспорта (опционально)
         """
-        # Получаем активные смены
-        active_shifts = Shift.objects.filter(status='active')
+        # Подзапрос для получения последней координаты каждой смены
+        latest_location_subquery = BusLocation.objects.filter(
+            shift=OuterRef('pk')
+        ).order_by('-timestamp').values('id')[:1]
+        
+        # Получаем активные смены с аннотацией ID последней координаты
+        active_shifts = Shift.objects.filter(
+            status='active'
+        ).select_related(
+            'bus',
+            'bus__route'
+        ).annotate(
+            latest_location_id=Subquery(latest_location_subquery)
+        )
         
         # Фильтр по маршруту
         route_id = request.query_params.get('route')
@@ -120,25 +130,37 @@ class BusLocationViewSet(viewsets.ModelViewSet):
         if bus_type:
             active_shifts = active_shifts.filter(bus__bus_type=bus_type)
         
-        # Получаем последнюю координату для каждой смены
+        # Получаем ID всех последних координат
+        location_ids = [
+            shift.latest_location_id 
+            for shift in active_shifts 
+            if shift.latest_location_id
+        ]
+        
+        # Получаем все координаты одним запросом
+        locations_dict = {
+            loc.shift_id: loc 
+            for loc in BusLocation.objects.filter(
+                id__in=location_ids
+            ).select_related('shift__bus', 'shift__bus__route')
+        }
+        
+        # Формируем ответ
         locations = []
         for shift in active_shifts:
-            last_location = BusLocation.objects.filter(
-                shift=shift
-            ).order_by('-timestamp').first()
-            
-            if last_location:
+            location = locations_dict.get(shift.id)
+            if location:
                 locations.append({
                     'bus_id': shift.bus.id,
                     'bus_number': shift.bus.registration_number,
                     'bus_type': shift.bus.bus_type,
                     'route_number': shift.bus.route.number if shift.bus.route else None,
-                    'latitude': float(last_location.latitude),
-                    'longitude': float(last_location.longitude),
-                    'speed': last_location.speed,
-                    'heading': last_location.heading,
-                    'accuracy': last_location.accuracy,
-                    'timestamp': last_location.timestamp
+                    'latitude': float(location.latitude),
+                    'longitude': float(location.longitude),
+                    'speed': location.speed,
+                    'heading': location.heading,
+                    'accuracy': location.accuracy,
+                    'timestamp': location.timestamp
                 })
         
         return Response(locations)
@@ -151,10 +173,10 @@ class BusLocationViewSet(viewsets.ModelViewSet):
         
         Query params:
         - hours: количество часов назад (по умолчанию 1)
-        - limit: максимум записей (по умолчанию 100)
+        - limit: максимум записей (по умолчанию 100, максимум 1000)
         """
         hours = int(request.query_params.get('hours', 1))
-        limit = int(request.query_params.get('limit', 100))
+        limit = min(int(request.query_params.get('limit', 100)), 1000)  # Ограничение
         
         start_time = timezone.now() - timedelta(hours=hours)
         
@@ -173,16 +195,35 @@ class BusLocationViewSet(viewsets.ModelViewSet):
         GET /api/locations/shift/{shift_id}/
         
         Query params:
-        - limit: максимум записей (по умолчанию 500)
+        - limit: максимум записей (по умолчанию 500, максимум 2000)
         """
-        limit = int(request.query_params.get('limit', 500))
+        limit = min(int(request.query_params.get('limit', 500)), 2000)  # Ограничение
+        
+        # Проверяем существование смены
+        try:
+            shift = Shift.objects.get(id=shift_id)
+        except Shift.DoesNotExist:
+            return Response(
+                {'detail': 'Смена не найдена'},
+                status=status.HTTP_404_NOT_FOUND
+            )
         
         locations = BusLocation.objects.filter(
             shift_id=shift_id
         ).order_by('-timestamp')[:limit]
         
         serializer = self.get_serializer(locations, many=True)
-        return Response(serializer.data)
+        
+        return Response({
+            'shift_id': shift.id,
+            'bus_number': shift.bus.registration_number,
+            'driver_name': f"{shift.driver.first_name} {shift.driver.last_name}".strip() or shift.driver.username,
+            'start_time': shift.start_time,
+            'end_time': shift.end_time,
+            'status': shift.status,
+            'total_locations': locations.count(),
+            'locations': serializer.data
+        })
     
     @action(detail=False, methods=['get'])
     def track(self, request):
@@ -191,37 +232,76 @@ class BusLocationViewSet(viewsets.ModelViewSet):
         GET /api/locations/track/
         
         Query params:
-        - limit: максимум записей (по умолчанию 200)
+        - limit: максимум записей (по умолчанию 200, максимум 1000)
         """
         # Получаем активную смену водителя
         try:
-            shift = Shift.objects.get(driver=request.user, status='active')
+            shift = Shift.objects.select_related('bus', 'bus__route').get(
+                driver=request.user, 
+                status='active'
+            )
         except Shift.DoesNotExist:
             return Response(
                 {'detail': 'У вас нет активной смены'},
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        limit = int(request.query_params.get('limit', 200))
+        limit = min(int(request.query_params.get('limit', 200)), 1000)  # Ограничение
         
+        # Координаты по возрастанию времени для построения трека
         locations = BusLocation.objects.filter(
             shift=shift
-        ).order_by('timestamp')[:limit]  # По возрастанию для построения трека
+        ).order_by('timestamp')[:limit]
         
         serializer = self.get_serializer(locations, many=True)
+        
         return Response({
             'shift_id': shift.id,
             'bus_number': shift.bus.registration_number,
             'route_number': shift.bus.route.number if shift.bus.route else None,
             'start_time': shift.start_time,
+            'duration_hours': shift.duration_hours,
+            'total_points': locations.count(),
             'track': serializer.data
         })
+    
+    def list(self, request, *args, **kwargs):
+        """
+        Список координат с пагинацией.
+        Обычно не используется, но доступен для отладки.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Ограничиваем последними 100 записями по умолчанию
+        queryset = queryset.order_by('-timestamp')[:100]
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    def update(self, request, *args, **kwargs):
+        """
+        Запрещаем обновление координат.
+        """
+        return Response(
+            {'detail': 'Обновление координат запрещено'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+    
+    def partial_update(self, request, *args, **kwargs):
+        """
+        Запрещаем частичное обновление координат.
+        """
+        return Response(
+            {'detail': 'Обновление координат запрещено'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
     
     def destroy(self, request, *args, **kwargs):
         """
         Запрещаем удаление координат.
+        Координаты - это логи, их нельзя удалять вручную.
         """
         return Response(
-            {'detail': 'Удаление координат запрещено'},
+            {'detail': 'Удаление координат запрещено. Используйте автоматическую очистку старых данных.'},
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
