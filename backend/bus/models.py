@@ -128,10 +128,20 @@ class Bus(models.Model):
     @property
     def current_location(self):
         """
-        Возвращает последнюю известную координату автобуса.
+        Возвращает последнюю координату ТОЛЬКО если есть активная смена.
         """
+        from shift.models import Shift
         from busLocation.models import BusLocation
-        
+    
+        # Проверяем есть ли активная смена
+        active_shift = Shift.objects.filter(
+            bus=self,
+            status='active'
+        ).first()
+    
+        if not active_shift:
+            return None
+    
         return BusLocation.objects.filter(
-            bus=self
+        shift=active_shift
         ).order_by('-timestamp').first()

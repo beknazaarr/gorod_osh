@@ -1,137 +1,97 @@
 from django.db import models
-from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.utils import timezone
 
 
-class Shift(models.Model):
+class BusLocation(models.Model):
     """
-    Модель рабочей смены водителя.
-    Фиксирует когда водитель начал и закончил работу на автобусе.
-    Координаты GPS привязываются к смене, а не напрямую к водителю.
+    Модель местоположения автобуса.
+    Хранит GPS-координаты. Каждые 5 секунд создаётся новая запись.
     """
-    
-    STATUS_CHOICES = (
-        ('active', 'Активна'),
-        ('completed', 'Завершена'),
-    )
-    
-    driver = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        limit_choices_to={'role': 'driver'},
-        related_name='shifts',
-        verbose_name='Водитель'
-    )
     
     bus = models.ForeignKey(
         'bus.Bus',
         on_delete=models.CASCADE,
-        related_name='shifts',
+        related_name='locations',
         verbose_name='Автобус'
     )
     
-    start_time = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name='Время начала смены',
-        help_text='Заполняется автоматически при создании'
+    shift = models.ForeignKey(
+        'shift.Shift',
+        on_delete=models.CASCADE,
+        related_name='locations',
+        verbose_name='Смена',
+        help_text='Координаты привязаны к смене'
     )
     
-    end_time = models.DateTimeField(
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        verbose_name='Широта',
+        help_text='Диапазон: -90 до +90'
+    )
+    
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        verbose_name='Долгота',
+        help_text='Диапазон: -180 до +180'
+    )
+    
+    speed = models.FloatField(
         null=True,
         blank=True,
-        verbose_name='Время окончания смены',
-        help_text='Заполняется когда водитель завершает смену'
+        verbose_name='Скорость',
+        help_text='Скорость в км/ч'
     )
     
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default='active',
-        verbose_name='Статус смены'
+    heading = models.FloatField(
+        null=True,
+        blank=True,
+        verbose_name='Направление',
+        help_text='Градусы: 0-360 (0=север, 90=восток)'
+    )
+    
+    accuracy = models.FloatField(
+        null=True,
+        blank=True,
+        verbose_name='Точность GPS',
+        help_text='Точность в метрах'
+    )
+    
+    timestamp = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Время получения координаты'
     )
     
     class Meta:
-        verbose_name = 'Смена'
-        verbose_name_plural = 'Смены'
-        ordering = ['-start_time']
+        verbose_name = 'Местоположение автобуса'
+        verbose_name_plural = 'Местоположения автобусов'
+        ordering = ['-timestamp']
         indexes = [
-            models.Index(fields=['driver', 'status']),
-            models.Index(fields=['bus', 'status']),
-            models.Index(fields=['status', '-start_time']),
+            models.Index(fields=['bus', '-timestamp']),
+            models.Index(fields=['shift', '-timestamp']),
+            models.Index(fields=['-timestamp']),
         ]
     
     def __str__(self):
-        return f"Смена #{self.id}: {self.driver.username} на {self.bus.registration_number}"
+        return f"{self.bus.registration_number} - {self.timestamp.strftime('%H:%M:%S')}"
     
     def clean(self):
         """
-        Валидация данных перед сохранением.
+        Валидация координат.
         """
-        if self.driver.role != 'driver':
-            raise ValidationError('Пользователь должен быть водителем')
+        if not -90 <= self.latitude <= 90:
+            raise ValidationError('Широта должна быть от -90 до 90')
         
-        if self.driver.is_blocked:
-            raise ValidationError('Заблокированный водитель не может начать смену')
+        if not -180 <= self.longitude <= 180:
+            raise ValidationError('Долгота должна быть от -180 до 180')
         
-        if not self.bus.is_active:
-            raise ValidationError('Автобус не активен')
+        if self.speed is not None and self.speed < 0:
+            raise ValidationError('Скорость не может быть отрицательной')
         
-        if self.end_time and self.end_time < self.start_time:
-            raise ValidationError('Время окончания не может быть раньше времени начала')
-        
-        if self.status == 'active' and self.pk is None:
-            active_shift = Shift.objects.filter(
-                driver=self.driver,
-                status='active'
-            ).exists()
-            
-            if active_shift:
-                raise ValidationError(
-                    f'У водителя {self.driver.username} уже есть активная смена'
-                )
+        if self.heading is not None and not 0 <= self.heading <= 360:
+            raise ValidationError('Направление должно быть от 0 до 360')
     
     def save(self, *args, **kwargs):
-        """
-        Переопределяем save для вызова валидации.
-        """
         self.clean()
         super().save(*args, **kwargs)
-    
-    def complete(self):
-        """
-        Метод для завершения смены.
-        Устанавливает end_time и меняет статус на 'completed'.
-        """
-        self.end_time = timezone.now()
-        self.status = 'completed'
-        self.save()
-    
-    @property
-    def duration(self):
-        """
-        Возвращает продолжительность смены.
-        """
-        if self.end_time:
-            return self.end_time - self.start_time
-        else:
-            return timezone.now() - self.start_time
-    
-    @property
-    def duration_hours(self):
-        """
-        Возвращает продолжительность смены в часах.
-        """
-        duration = self.duration
-        return duration.total_seconds() / 3600
-    
-    @property
-    def last_location(self):
-        """
-        Возвращает последнюю координату этой смены.
-        """
-        from busLocation.models import BusLocation
-        
-        return BusLocation.objects.filter(
-            shift=self
-        ).order_by('-timestamp').first()
