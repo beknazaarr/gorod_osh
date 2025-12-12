@@ -19,7 +19,7 @@ class Shift(models.Model):
     
     # Водитель
     driver = models.ForeignKey(
-        'User',
+        'user.User',
         on_delete=models.CASCADE,
         limit_choices_to={'role': 'driver'},
         related_name='shifts',
@@ -28,7 +28,7 @@ class Shift(models.Model):
     
     # Автобус
     bus = models.ForeignKey(
-        'Bus',
+        'bus.Bus',
         on_delete=models.CASCADE,
         related_name='shifts',
         verbose_name='Автобус'
@@ -141,7 +141,7 @@ class Shift(models.Model):
         """
         Возвращает последнюю координату этой смены.
         """
-        from .bus_location import BusLocation
+        from busLocation.models import BusLocation
         
         return BusLocation.objects.filter(
             shift=self

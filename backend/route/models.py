@@ -154,7 +154,7 @@ class Route(models.Model):
         """
         Возвращает количество активных автобусов на этом маршруте.
         """
-        from .shift import Shift  # Импорт здесь чтобы избежать циклических импортов
+        from shift.models import Shift  # Импорт здесь чтобы избежать циклических импортов
         
         active_shifts = Shift.objects.filter(
             status='active',

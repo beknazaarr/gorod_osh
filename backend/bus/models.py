@@ -53,7 +53,7 @@ class Bus(models.Model):
     
     # Маршрут, к которому привязан автобус
     route = models.ForeignKey(
-        'Route',
+        'route.Route',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -64,7 +64,7 @@ class Bus(models.Model):
     
     # Водитель, назначенный на автобус
     assigned_driver = models.ForeignKey(
-        'User',
+        'user.User',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -131,7 +131,7 @@ class Bus(models.Model):
         """
         Проверяет, находится ли автобус сейчас на маршруте (есть ли активная смена).
         """
-        from .shift import Shift
+        from shift.models import Shift
         
         return Shift.objects.filter(
             bus=self,
@@ -143,7 +143,7 @@ class Bus(models.Model):
         """
         Возвращает последнюю известную координату автобуса.
         """
-        from .bus_location import BusLocation
+        from buslocation.models import BusLocation
         
         return BusLocation.objects.filter(
             bus=self
