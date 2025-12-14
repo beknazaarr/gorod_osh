@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+    <string>Нужен доступ к геолокации для показа вашего местоположения на карте</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>Нужен доступ к геолокации для показа вашего местоположения на карте</string>
 </dict>
 </plist>

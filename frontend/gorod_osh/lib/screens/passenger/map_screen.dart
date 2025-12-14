@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../services/api_service.dart';
 import '../../models/route.dart';
 import '../../models/bus_location.dart';
@@ -23,6 +24,11 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   String? _error;
   Timer? _locationTimer;
 
+  // Геолокация пользователя
+  LatLng? _userLocation;
+  bool _isLoadingLocation = false;
+  StreamSubscription<Position>? _positionStream;
+
   // Центр Оша
   final LatLng _oshCenter = const LatLng(40.5283, 72.7985);
 
@@ -31,13 +37,107 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     super.initState();
     _loadData();
     _startLocationUpdates();
+    _requestLocationPermission();
   }
 
   @override
   void dispose() {
     _locationTimer?.cancel();
+    _positionStream?.cancel();
     super.dispose();
   }
+
+  // ========== ГЕОЛОКАЦИЯ ==========
+
+  Future<void> _requestLocationPermission() async {
+    setState(() => _isLoadingLocation = true);
+
+    try {
+      // Проверяем включена ли геолокация
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _showLocationError('Включите GPS на устройстве');
+        setState(() => _isLoadingLocation = false);
+        return;
+      }
+
+      // Проверяем разрешения
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _showLocationError('Разрешение на геолокацию отклонено');
+          setState(() => _isLoadingLocation = false);
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _showLocationError('Разрешение на геолокацию запрещено навсегда.\nВключите в настройках приложения.');
+        setState(() => _isLoadingLocation = false);
+        return;
+      }
+
+      // Получаем текущую позицию
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _userLocation = LatLng(position.latitude, position.longitude);
+        _isLoadingLocation = false;
+      });
+
+      // Центрируем карту на пользователя
+      _mapController.move(_userLocation!, 15.0);
+
+      // Начинаем отслеживать перемещение
+      _startTrackingLocation();
+
+    } catch (e) {
+      print('Ошибка получения геолокации: $e');
+      _showLocationError('Не удалось получить местоположение');
+      setState(() => _isLoadingLocation = false);
+    }
+  }
+
+  void _startTrackingLocation() {
+    const locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10, // обновлять каждые 10 метров
+    );
+
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: locationSettings,
+    ).listen((Position position) {
+      setState(() {
+        _userLocation = LatLng(position.latitude, position.longitude);
+      });
+    });
+  }
+
+  void _showLocationError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(
+          label: 'Настройки',
+          onPressed: () => Geolocator.openLocationSettings(),
+        ),
+      ),
+    );
+  }
+
+  void _centerOnUser() {
+    if (_userLocation != null) {
+      _mapController.move(_userLocation!, 16.0);
+    } else {
+      _requestLocationPermission();
+    }
+  }
+
+  // ========== ЗАГРУЗКА ДАННЫХ ==========
 
   Future<void> _loadData() async {
     setState(() {
@@ -82,13 +182,13 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   Color _getBusTypeColor(String busType) {
     switch (busType) {
       case 'bus':
-        return const Color(0xFF2196F3); // Синий как у 2GIS
+        return const Color(0xFF2196F3);
       case 'trolleybus':
-        return const Color(0xFF4CAF50); // Зеленый
+        return const Color(0xFF4CAF50);
       case 'electric_bus':
-        return const Color(0xFFFF9800); // Оранжевый
+        return const Color(0xFFFF9800);
       case 'minibus':
-        return const Color(0xFFF44336); // Красный
+        return const Color(0xFFF44336);
       default:
         return const Color(0xFF9E9E9E);
     }
@@ -97,8 +197,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(
-        body: const Center(child: CircularProgressIndicator()),
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -138,16 +238,16 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
               ),
             ),
             children: [
-              // Тайлы OSM с высоким качеством
+              // Тайлы OSM
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.gorod_osh',
                 tileSize: 256,
                 maxZoom: 19,
-                keepBuffer: 5, // Предзагрузка тайлов для плавности
+                keepBuffer: 5,
               ),
 
-              // Линии маршрутов (тоньше, как у 2GIS)
+              // Линии маршрутов (ЯРЧЕ!)
               PolylineLayer(
                 polylines: _routes
                     .where((route) => route.path.isNotEmpty)
@@ -161,13 +261,13 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
                   return Polyline(
                     points: points,
-                    strokeWidth: 3.5,
-                    color: _getBusTypeColor(route.busType).withOpacity(0.7),
+                    strokeWidth: 5.0, // ← Толще
+                    color: _getBusTypeColor(route.busType).withOpacity(0.85), // ← Ярче
                   );
                 }).toList(),
               ),
 
-              // Маркеры автобусов в стиле 2GIS
+              // Маркеры автобусов
               MarkerLayer(
                 markers: _busLocations.map((bus) {
                   return Marker(
@@ -210,6 +310,35 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   );
                 }).toList(),
               ),
+
+              // ========== МАРКЕР ПОЛЬЗОВАТЕЛЯ ==========
+              if (_userLocation != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: _userLocation!,
+                      width: 50,
+                      height: 50,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.3),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Container(
+                            width: 16,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: Colors.blue,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 3),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
 
@@ -234,7 +363,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      // Кнопка меню
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -252,7 +380,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      // Поисковая строка
                       Expanded(
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -285,13 +412,12 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
             ),
           ),
 
-          // ========== КНОПКИ СПРАВА (как у 2GIS) ==========
+          // ========== КНОПКИ СПРАВА ==========
           Positioned(
             right: 16,
             bottom: 180,
             child: Column(
               children: [
-                // Кнопка +
                 _buildMapButton(
                   icon: Icons.add,
                   onPressed: () {
@@ -302,7 +428,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
-                // Кнопка -
                 _buildMapButton(
                   icon: Icons.remove,
                   onPressed: () {
@@ -313,72 +438,18 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
-                // Кнопка компас/геолокация
+                // Кнопка геолокации
                 _buildMapButton(
-                  icon: Icons.my_location,
-                  onPressed: () {
-                    _mapController.move(_oshCenter, 13.0);
-                  },
+                  icon: _userLocation != null ? Icons.my_location : Icons.location_searching,
+                  onPressed: _centerOnUser,
+                  color: _userLocation != null ? Colors.blue : null,
                 ),
                 const SizedBox(height: 12),
-                // Кнопка слои
                 _buildMapButton(
                   icon: Icons.layers,
                   onPressed: () {},
                 ),
               ],
-            ),
-          ),
-
-          // ========== НИЖНЯЯ ПАНЕЛЬ (как у 2GIS) ==========
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Индикатор
-                    Container(
-                      margin: const EdgeInsets.only(top: 8),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    // Навигационные кнопки
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildNavButton(Icons.home, 'Главная', false),
-                          _buildNavButton(Icons.directions_bus, 'Транспорт', true),
-                          _buildNavButton(Icons.chat_bubble_outline, 'Обращение', false),
-                          _buildNavButton(Icons.apps, 'Сервисы', false),
-                          _buildNavButton(Icons.person_outline, 'Кабинет', false),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
           ),
 
@@ -389,19 +460,16 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
             bottom: 90,
             child: Row(
               children: [
-                // Кнопка поиска
                 _buildActionButton(
                   icon: Icons.search,
                   onPressed: () {},
                 ),
                 const SizedBox(width: 12),
-                // Кнопка избранное
                 _buildActionButton(
                   icon: Icons.favorite_border,
                   onPressed: () {},
                 ),
                 const SizedBox(width: 12),
-                // Кнопка маршруты (главная)
                 Expanded(
                   child: Container(
                     height: 56,
@@ -461,13 +529,101 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
               ],
             ),
           ),
+
+          // ========== НИЖНЯЯ ПАНЕЛЬ ==========
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildNavButton(Icons.home, 'Главная', false),
+                          _buildNavButton(Icons.directions_bus, 'Транспорт', true),
+                          _buildNavButton(Icons.chat_bubble_outline, 'Обращение', false),
+                          _buildNavButton(Icons.apps, 'Сервисы', false),
+                          _buildNavButton(Icons.person_outline, 'Кабинет', false),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Индикатор загрузки геолокации
+          if (_isLoadingLocation)
+            Positioned(
+              top: 100,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      SizedBox(width: 12),
+                      Text('Получение геолокации...'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  // Кнопка карты (справа)
-  Widget _buildMapButton({required IconData icon, required VoidCallback onPressed}) {
+  Widget _buildMapButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    Color? color,
+  }) {
     return Container(
       width: 48,
       height: 48,
@@ -484,12 +640,11 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       child: IconButton(
         icon: Icon(icon, size: 24),
         onPressed: onPressed,
-        color: Colors.black87,
+        color: color ?? Colors.black87,
       ),
     );
   }
 
-  // Кнопка действия (над нижней панелью)
   Widget _buildActionButton({required IconData icon, required VoidCallback onPressed}) {
     return Container(
       width: 56,
@@ -512,7 +667,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
-  // Кнопка навигации (нижняя панель)
   Widget _buildNavButton(IconData icon, String label, bool isActive) {
     return InkWell(
       onTap: () {},
@@ -541,7 +695,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
-  // Показать информацию об автобусе
   void _showBusInfo(BusLocationModel bus) {
     showModalBottomSheet(
       context: context,
@@ -665,7 +818,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
-  // Показать список маршрутов
   void _showRoutesList() {
     showModalBottomSheet(
       context: context,
