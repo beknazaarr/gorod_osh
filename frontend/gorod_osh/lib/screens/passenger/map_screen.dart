@@ -23,7 +23,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   String? _error;
   Timer? _locationTimer;
 
-  // Центр Оша (примерные координаты)
+  // Центр Оша
   final LatLng _oshCenter = const LatLng(40.5283, 72.7985);
 
   @override
@@ -39,7 +39,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     super.dispose();
   }
 
-  // Загрузка начальных данных
   Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
@@ -63,7 +62,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     }
   }
 
-  // Обновление координат автобусов каждые 5 секунд
   void _startLocationUpdates() {
     _locationTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _updateBusLocations();
@@ -81,19 +79,18 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     }
   }
 
-  // Цвета для разных типов транспорта
   Color _getBusTypeColor(String busType) {
     switch (busType) {
       case 'bus':
-        return Colors.blue;
+        return const Color(0xFF2196F3); // Синий как у 2GIS
       case 'trolleybus':
-        return Colors.green;
+        return const Color(0xFF4CAF50); // Зеленый
       case 'electric_bus':
-        return Colors.orange;
+        return const Color(0xFFFF9800); // Оранжевый
       case 'minibus':
-        return Colors.red;
+        return const Color(0xFFF44336); // Красный
       default:
-        return Colors.grey;
+        return const Color(0xFF9E9E9E);
     }
   }
 
@@ -101,22 +98,12 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Транспорт Оша'),
-          backgroundColor: const Color(0xFF0D2F5B),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_error != null) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Транспорт Оша'),
-          backgroundColor: const Color(0xFF0D2F5B),
-        ),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -136,37 +123,35 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Транспорт Оша'),
-        backgroundColor: const Color(0xFF0D2F5B),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-          ),
-        ],
-      ),
       body: Stack(
         children: [
-          // Карта
+          // ========== КАРТА ==========
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
               initialCenter: _oshCenter,
               initialZoom: 13.0,
-              minZoom: 10.0,
-              maxZoom: 18.0,
+              minZoom: 3.0,
+              maxZoom: 19.0,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.all,
+              ),
             ),
             children: [
-              // Тайлы карты (OpenStreetMap)
+              // Тайлы OSM с высоким качеством
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.gorod_osh',
+                tileSize: 256,
+                maxZoom: 19,
+                keepBuffer: 5, // Предзагрузка тайлов для плавности
               ),
 
-              // Линии маршрутов
+              // Линии маршрутов (тоньше, как у 2GIS)
               PolylineLayer(
-                polylines: _routes.map((route) {
+                polylines: _routes
+                    .where((route) => route.path.isNotEmpty)
+                    .map((route) {
                   List<LatLng> points = route.path.map((point) {
                     return LatLng(
                       point['lat'].toDouble(),
@@ -176,34 +161,47 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
                   return Polyline(
                     points: points,
-                    strokeWidth: 3.0,
+                    strokeWidth: 3.5,
                     color: _getBusTypeColor(route.busType).withOpacity(0.7),
                   );
                 }).toList(),
               ),
 
-              // Маркеры автобусов
+              // Маркеры автобусов в стиле 2GIS
               MarkerLayer(
                 markers: _busLocations.map((bus) {
                   return Marker(
                     point: LatLng(bus.latitude, bus.longitude),
-                    width: 40,
-                    height: 40,
+                    width: 46,
+                    height: 46,
                     child: GestureDetector(
                       onTap: () => _showBusInfo(bus),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: _getBusTypeColor(bus.busType),
+                          color: Colors.white,
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 6,
+                              spreadRadius: 1,
+                            ),
+                          ],
                         ),
-                        child: Center(
-                          child: Text(
-                            bus.routeNumber ?? '?',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
+                        padding: const EdgeInsets.all(3),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: _getBusTypeColor(bus.busType),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Text(
+                              bus.routeNumber ?? '?',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
                             ),
                           ),
                         ),
@@ -215,42 +213,330 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
             ],
           ),
 
-          // Информация о количестве автобусов
+          // ========== ВЕРХНЯЯ ПАНЕЛЬ ==========
           Positioned(
-            top: 16,
-            right: 16,
+            top: 0,
+            left: 0,
+            right: 0,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.3),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      // Кнопка меню
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.menu),
+                          onPressed: () {},
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Поисковая строка
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.search, color: Colors.grey[400]),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Поиск маршрута',
+                                style: TextStyle(color: Colors.grey[400], fontSize: 16),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ========== КНОПКИ СПРАВА (как у 2GIS) ==========
+          Positioned(
+            right: 16,
+            bottom: 180,
+            child: Column(
+              children: [
+                // Кнопка +
+                _buildMapButton(
+                  icon: Icons.add,
+                  onPressed: () {
+                    _mapController.move(
+                      _mapController.camera.center,
+                      _mapController.camera.zoom + 1,
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                // Кнопка -
+                _buildMapButton(
+                  icon: Icons.remove,
+                  onPressed: () {
+                    _mapController.move(
+                      _mapController.camera.center,
+                      _mapController.camera.zoom - 1,
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                // Кнопка компас/геолокация
+                _buildMapButton(
+                  icon: Icons.my_location,
+                  onPressed: () {
+                    _mapController.move(_oshCenter, 13.0);
+                  },
+                ),
+                const SizedBox(height: 12),
+                // Кнопка слои
+                _buildMapButton(
+                  icon: Icons.layers,
+                  onPressed: () {},
+                ),
+              ],
+            ),
+          ),
+
+          // ========== НИЖНЯЯ ПАНЕЛЬ (как у 2GIS) ==========
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 4,
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
                   ),
                 ],
               ),
-              child: Row(
-                children: [
-                  const Icon(Icons.directions_bus, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'На линии: ${_busLocations.length}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Индикатор
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    // Навигационные кнопки
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildNavButton(Icons.home, 'Главная', false),
+                          _buildNavButton(Icons.directions_bus, 'Транспорт', true),
+                          _buildNavButton(Icons.chat_bubble_outline, 'Обращение', false),
+                          _buildNavButton(Icons.apps, 'Сервисы', false),
+                          _buildNavButton(Icons.person_outline, 'Кабинет', false),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
+            ),
+          ),
+
+          // ========== КНОПКИ НАД НИЖНЕЙ ПАНЕЛЬЮ ==========
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 90,
+            child: Row(
+              children: [
+                // Кнопка поиска
+                _buildActionButton(
+                  icon: Icons.search,
+                  onPressed: () {},
+                ),
+                const SizedBox(width: 12),
+                // Кнопка избранное
+                _buildActionButton(
+                  icon: Icons.favorite_border,
+                  onPressed: () {},
+                ),
+                const SizedBox(width: 12),
+                // Кнопка маршруты (главная)
+                Expanded(
+                  child: Container(
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2196F3),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF2196F3).withOpacity(0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => _showRoutesList(),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.route, color: Colors.white),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Маршруты',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (_busLocations.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '${_busLocations.length}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
 
-      // Кнопка списка маршрутов
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showRoutesList(),
-        backgroundColor: const Color(0xFF0D2F5B),
-        child: const Icon(Icons.list),
+  // Кнопка карты (справа)
+  Widget _buildMapButton({required IconData icon, required VoidCallback onPressed}) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: IconButton(
+        icon: Icon(icon, size: 24),
+        onPressed: onPressed,
+        color: Colors.black87,
+      ),
+    );
+  }
+
+  // Кнопка действия (над нижней панелью)
+  Widget _buildActionButton({required IconData icon, required VoidCallback onPressed}) {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: IconButton(
+        icon: Icon(icon, size: 26),
+        onPressed: onPressed,
+        color: Colors.black87,
+      ),
+    );
+  }
+
+  // Кнопка навигации (нижняя панель)
+  Widget _buildNavButton(IconData icon, String label, bool isActive) {
+    return InkWell(
+      onTap: () {},
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isActive ? const Color(0xFF2196F3) : Colors.grey[600],
+              size: 26,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? const Color(0xFF2196F3) : Colors.grey[600],
+                fontSize: 11,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -259,18 +545,31 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   void _showBusInfo(BusLocationModel bus) {
     showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return Container(
-          padding: const EdgeInsets.all(16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
               Row(
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: 60,
+                    height: 60,
                     decoration: BoxDecoration(
                       color: _getBusTypeColor(bus.busType),
                       shape: BoxShape.circle,
@@ -281,6 +580,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
+                          fontSize: 24,
                         ),
                       ),
                     ),
@@ -291,37 +591,37 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Маршрут ${bus.routeNumber ?? "Неизвестно"}',
+                          'Маршрут ${bus.routeNumber ?? "—"}',
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+                        const SizedBox(height: 4),
                         Text(
-                          'Автобус: ${bus.busNumber}',
-                          style: TextStyle(color: Colors.grey[600]),
+                          bus.busNumber,
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 15,
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
-              const Divider(height: 24),
+              const SizedBox(height: 24),
               if (bus.speed != null)
-                Row(
-                  children: [
-                    const Icon(Icons.speed, size: 20),
-                    const SizedBox(width: 8),
-                    Text('Скорость: ${bus.speed!.toStringAsFixed(1)} км/ч'),
-                  ],
+                _buildInfoTile(
+                  Icons.speed,
+                  'Скорость',
+                  '${bus.speed!.toStringAsFixed(0)} км/ч',
                 ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Icon(Icons.access_time, size: 20),
-                  const SizedBox(width: 8),
-                  Text('Обновлено: ${_formatTime(bus.timestamp)}'),
-                ],
+              const SizedBox(height: 12),
+              _buildInfoTile(
+                Icons.access_time,
+                'Обновлено',
+                _formatTime(bus.timestamp),
               ),
             ],
           ),
@@ -330,33 +630,103 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
+  Widget _buildInfoTile(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFF2196F3)),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey[600],
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   // Показать список маршрутов
   void _showRoutesList() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.3,
-          maxChildSize: 0.9,
-          expand: false,
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
           builder: (context, scrollController) {
             return Container(
-              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
               child: Column(
                 children: [
-                  const Text(
-                    'Маршруты',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  const Divider(),
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'Маршруты',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (_busLocations.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.blue[50],
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              'На линии: ${_busLocations.length}',
+                              style: const TextStyle(
+                                color: Color(0xFF2196F3),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                   Expanded(
                     child: ListView.builder(
                       controller: scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       itemCount: _routes.length,
                       itemBuilder: (context, index) {
                         final route = _routes[index];
@@ -364,48 +734,80 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                             .where((b) => b.routeNumber == route.number)
                             .length;
 
-                        return Card(
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
                           child: ListTile(
+                            contentPadding: const EdgeInsets.all(16),
                             leading: Container(
-                              width: 40,
-                              height: 40,
+                              width: 56,
+                              height: 56,
                               decoration: BoxDecoration(
-                                color: _getBusTypeColor(route.busType),
-                                shape: BoxShape.circle,
+                                color: _getBusTypeColor(route.busType).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
                               ),
                               child: Center(
                                 child: Text(
                                   route.number,
-                                  style: const TextStyle(
-                                    color: Colors.white,
+                                  style: TextStyle(
+                                    color: _getBusTypeColor(route.busType),
                                     fontWeight: FontWeight.bold,
+                                    fontSize: 18,
                                   ),
                                 ),
                               ),
                             ),
-                            title: Text(route.name),
+                            title: Text(
+                              route.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('${route.startPoint} → ${route.endPoint}'),
-                                if (route.workingHours != null)
-                                  Text(
-                                    'Работает: ${route.workingHours}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                    ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${route.startPoint} → ${route.endPoint}',
+                                  style: TextStyle(color: Colors.grey[600]),
+                                ),
+                                if (route.workingHours != null) ...[
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Icon(Icons.schedule, size: 14, color: Colors.grey[500]),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        route.workingHours!,
+                                        style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                                      ),
+                                    ],
                                   ),
+                                ],
                               ],
                             ),
                             trailing: busCount > 0
-                                ? Chip(
-                              label: Text('$busCount'),
-                              backgroundColor:
-                              _getBusTypeColor(route.busType)
-                                  .withOpacity(0.2),
+                                ? Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: _getBusTypeColor(route.busType).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '$busCount',
+                                style: TextStyle(
+                                  color: _getBusTypeColor(route.busType),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
                             )
-                                : null,
+                                : const Icon(Icons.chevron_right, color: Colors.grey),
                             onTap: () {
                               Navigator.pop(context);
                               _focusOnRoute(route);
@@ -424,18 +826,16 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
-  // Сфокусироваться на маршруте
   void _focusOnRoute(RouteModel route) {
     if (route.path.isNotEmpty) {
       final firstPoint = route.path.first;
       _mapController.move(
         LatLng(firstPoint['lat'].toDouble(), firstPoint['lng'].toDouble()),
-        14.0,
+        15.0,
       );
     }
   }
 
-  // Форматирование времени
   String _formatTime(DateTime time) {
     final now = DateTime.now();
     final diff = now.difference(time);

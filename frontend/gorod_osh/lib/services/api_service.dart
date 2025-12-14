@@ -6,19 +6,31 @@ import '../models/bus_location.dart';
 class ApiService {
   final Dio _dio = Dio(
     BaseOptions(
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(seconds: 30),
+    ),
+  )..interceptors.add(
+    LogInterceptor(
+      request: true,
+      requestHeader: true,
+      requestBody: true,
+      responseHeader: true,
+      responseBody: true,
+      error: true,
+      logPrint: (obj) => print('🔥 DIO LOG: $obj'),
     ),
   );
 
   // Получить все активные маршруты
   Future<List<RouteModel>> getActiveRoutes() async {
     try {
+      print('📍 Отправка запроса на: ${ApiConstants.routes}active/');
       final response = await _dio.get(ApiConstants.routes + 'active/');
+      print('✅ Ответ получен: ${response.statusCode}');
       final List<dynamic> data = response.data;
       return data.map((json) => RouteModel.fromJson(json)).toList();
     } catch (e) {
-      print('Ошибка загрузки маршрутов: $e');
+      print('❌ Ошибка загрузки маршрутов: $e');
       rethrow;
     }
   }
@@ -29,7 +41,7 @@ class ApiService {
       final response = await _dio.get('${ApiConstants.routes}$routeId/');
       return RouteModel.fromJson(response.data);
     } catch (e) {
-      print('Ошибка загрузки пути маршрута: $e');
+      print('❌ Ошибка загрузки пути маршрута: $e');
       rethrow;
     }
   }
@@ -44,15 +56,17 @@ class ApiService {
       if (routeId != null) queryParams['route'] = routeId;
       if (busType != null) queryParams['bus_type'] = busType;
 
+      print('📍 Отправка запроса на: ${ApiConstants.latestLocations}');
       final response = await _dio.get(
         ApiConstants.latestLocations,
         queryParameters: queryParams,
       );
 
+      print('✅ Координаты получены: ${response.statusCode}');
       final List<dynamic> data = response.data;
       return data.map((json) => BusLocationModel.fromJson(json)).toList();
     } catch (e) {
-      print('Ошибка загрузки координат автобусов: $e');
+      print('❌ Ошибка загрузки координат автобусов: $e');
       rethrow;
     }
   }

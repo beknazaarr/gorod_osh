@@ -1,5 +1,5 @@
 class ApiConstants {
-  static const String baseUrl = 'http://172.20.10.6:8001/api';
+  static const String baseUrl = 'http://172.20.10.6:8002/api';
 
   static const String routes = '$baseUrl/routes/';
   static const String buses = '$baseUrl/buses/';

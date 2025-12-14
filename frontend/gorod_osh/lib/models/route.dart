@@ -5,8 +5,8 @@ class RouteModel {
   final String busType;
   final String startPoint;
   final String endPoint;
-  final Map<String, dynamic> startCoordinates;
-  final Map<String, dynamic> endCoordinates;
+  final Map<String, dynamic>? startCoordinates;  // ← сделал nullable
+  final Map<String, dynamic>? endCoordinates;    // ← сделал nullable
   final List<Map<String, dynamic>> path;
   final String? workingHours;
   final bool isActive;
@@ -18,8 +18,8 @@ class RouteModel {
     required this.busType,
     required this.startPoint,
     required this.endPoint,
-    required this.startCoordinates,
-    required this.endCoordinates,
+    this.startCoordinates,      // ← nullable
+    this.endCoordinates,        // ← nullable
     required this.path,
     this.workingHours,
     required this.isActive,
@@ -33,9 +33,13 @@ class RouteModel {
       busType: json['bus_type'],
       startPoint: json['start_point'],
       endPoint: json['end_point'],
-      startCoordinates: json['start_coordinates'],
-      endCoordinates: json['end_coordinates'],
-      path: List<Map<String, dynamic>>.from(json['path']),
+      // Безопасная обработка координат
+      startCoordinates: json['start_coordinates'] as Map<String, dynamic>?,
+      endCoordinates: json['end_coordinates'] as Map<String, dynamic>?,
+      // Безопасная обработка path - если null, возвращаем пустой массив
+      path: json['path'] != null
+          ? List<Map<String, dynamic>>.from(json['path'])
+          : [],
       workingHours: json['working_hours'],
       isActive: json['is_active'],
     );

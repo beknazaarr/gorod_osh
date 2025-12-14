@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'screens/passenger/map_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -32,7 +33,8 @@ class _SplashScreenState extends State<SplashScreen> {
     Timer(const Duration(seconds: 3), () {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        // ↓ ИЗМЕНИ ЭТУ СТРОКУ
+        MaterialPageRoute(builder: (_) => const PassengerMapScreen()),
       );
     });
   }
@@ -45,25 +47,6 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Image.asset(
           'assets/images/logo.png',
           width: 150,
-        ),
-      ),
-    );
-  }
-}
-
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Город Ош'),
-      ),
-      body: const Center(
-        child: Text(
-          'Главный экран приложения',
-          style: TextStyle(fontSize: 20),
         ),
       ),
     );
