@@ -20,6 +20,11 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
   List<RouteModel> _routes = [];
   List<BusLocationModel> _busLocations = [];
+
+  // ========== ВЫБРАННЫЕ МАРШРУТЫ ==========
+  Set<int> _selectedRouteIds = {};
+  List<RouteModel> _selectedRoutes = [];
+
   bool _isLoading = true;
   String? _error;
   Timer? _locationTimer;
@@ -53,7 +58,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     setState(() => _isLoadingLocation = true);
 
     try {
-      // Проверяем включена ли геолокация
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         _showLocationError('Включите GPS на устройстве');
@@ -61,7 +65,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         return;
       }
 
-      // Проверяем разрешения
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -78,7 +81,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         return;
       }
 
-      // Получаем текущую позицию
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
@@ -88,10 +90,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         _isLoadingLocation = false;
       });
 
-      // Центрируем карту на пользователя
       _mapController.move(_userLocation!, 15.0);
-
-      // Начинаем отслеживать перемещение
       _startTrackingLocation();
 
     } catch (e) {
@@ -104,7 +103,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   void _startTrackingLocation() {
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 10, // обновлять каждые 10 метров
+      distanceFilter: 10,
     );
 
     _positionStream = Geolocator.getPositionStream(
@@ -179,6 +178,42 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     }
   }
 
+  // ========== РАБОТА С ВЫБРАННЫМИ МАРШРУТАМИ ==========
+
+  void _toggleRouteSelection(RouteModel route) {
+    setState(() {
+      if (_selectedRouteIds.contains(route.id)) {
+        _selectedRouteIds.remove(route.id);
+        _selectedRoutes.removeWhere((r) => r.id == route.id);
+      } else {
+        _selectedRouteIds.add(route.id);
+        _selectedRoutes.add(route);
+      }
+    });
+  }
+
+  void _clearAllSelections() {
+    setState(() {
+      _selectedRouteIds.clear();
+      _selectedRoutes.clear();
+    });
+  }
+
+  List<BusLocationModel> _getFilteredBusLocations() {
+    if (_selectedRouteIds.isEmpty) {
+      return _busLocations;
+    }
+
+    // Фильтруем автобусы только по выбранным маршрутам
+    return _busLocations.where((bus) {
+      final route = _routes.firstWhere(
+            (r) => r.number == bus.routeNumber,
+        orElse: () => _routes.first,
+      );
+      return _selectedRouteIds.contains(route.id);
+    }).toList();
+  }
+
   Color _getBusTypeColor(String busType) {
     switch (busType) {
       case 'bus':
@@ -191,6 +226,21 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         return const Color(0xFFF44336);
       default:
         return const Color(0xFF9E9E9E);
+    }
+  }
+
+  String _getBusTypeLabel(String busType) {
+    switch (busType) {
+      case 'bus':
+        return 'Автобус';
+      case 'trolleybus':
+        return 'Троллейбус';
+      case 'electric_bus':
+        return 'Электробус';
+      case 'minibus':
+        return 'Маршрутка';
+      default:
+        return 'Транспорт';
     }
   }
 
@@ -222,6 +272,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       );
     }
 
+    final filteredBuses = _getFilteredBusLocations();
+
     return Scaffold(
       body: Stack(
         children: [
@@ -238,7 +290,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
               ),
             ),
             children: [
-              // Тайлы OSM
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.gorod_osh',
@@ -247,9 +298,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                 keepBuffer: 5,
               ),
 
-              // Линии маршрутов (ЯРЧЕ!)
+              // Линии ТОЛЬКО ВЫБРАННЫХ маршрутов
               PolylineLayer(
-                polylines: _routes
+                polylines: (_selectedRoutes.isEmpty ? _routes : _selectedRoutes)
                     .where((route) => route.path.isNotEmpty)
                     .map((route) {
                   List<LatLng> points = route.path.map((point) {
@@ -261,15 +312,17 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
                   return Polyline(
                     points: points,
-                    strokeWidth: 5.0, // ← Толще
-                    color: _getBusTypeColor(route.busType).withOpacity(0.85), // ← Ярче
+                    strokeWidth: _selectedRouteIds.contains(route.id) ? 6.0 : 4.0,
+                    color: _getBusTypeColor(route.busType).withOpacity(
+                      _selectedRouteIds.contains(route.id) ? 0.9 : 0.5,
+                    ),
                   );
                 }).toList(),
               ),
 
-              // Маркеры автобусов
+              // Маркеры автобусов (отфильтрованные)
               MarkerLayer(
-                markers: _busLocations.map((bus) {
+                markers: filteredBuses.map((bus) {
                   return Marker(
                     point: LatLng(bus.latitude, bus.longitude),
                     width: 46,
@@ -311,7 +364,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                 }).toList(),
               ),
 
-              // ========== МАРКЕР ПОЛЬЗОВАТЕЛЯ ==========
+              // Маркер пользователя
               if (_userLocation != null)
                 MarkerLayer(
                   markers: [
@@ -381,27 +434,40 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 8,
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.search, color: Colors.grey[400]),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Поиск маршрута',
-                                style: TextStyle(color: Colors.grey[400], fontSize: 16),
-                              ),
-                            ],
+                        child: GestureDetector(
+                          onTap: _showSearchBottomSheet,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 8,
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.search, color: Colors.grey[400]),
+                                const SizedBox(width: 8),
+                                Text(
+                                  _selectedRouteIds.isEmpty
+                                      ? 'Поиск маршрута'
+                                      : 'Выбрано: ${_selectedRouteIds.length}',
+                                  style: TextStyle(
+                                    color: _selectedRouteIds.isEmpty
+                                        ? Colors.grey[400]
+                                        : const Color(0xFF2196F3),
+                                    fontSize: 16,
+                                    fontWeight: _selectedRouteIds.isEmpty
+                                        ? FontWeight.normal
+                                        : FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -438,7 +504,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
-                // Кнопка геолокации
                 _buildMapButton(
                   icon: _userLocation != null ? Icons.my_location : Icons.location_searching,
                   onPressed: _centerOnUser,
@@ -462,7 +527,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
               children: [
                 _buildActionButton(
                   icon: Icons.search,
-                  onPressed: () {},
+                  onPressed: _showSearchBottomSheet,
+                  badge: _selectedRouteIds.isNotEmpty ? _selectedRouteIds.length : null,
                 ),
                 const SizedBox(width: 12),
                 _buildActionButton(
@@ -502,7 +568,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            if (_busLocations.isNotEmpty) ...[
+                            if (filteredBuses.isNotEmpty) ...[
                               const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -511,7 +577,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
-                                  '${_busLocations.length}',
+                                  '${filteredBuses.length}',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 14,
@@ -645,25 +711,58 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
-  Widget _buildActionButton({required IconData icon, required VoidCallback onPressed}) {
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
+  Widget _buildActionButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    int? badge,
+  }) {
+    return Stack(
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 8,
+              ),
+            ],
           ),
-        ],
-      ),
-      child: IconButton(
-        icon: Icon(icon, size: 26),
-        onPressed: onPressed,
-        color: Colors.black87,
-      ),
+          child: IconButton(
+            icon: Icon(icon, size: 26),
+            onPressed: onPressed,
+            color: Colors.black87,
+          ),
+        ),
+        if (badge != null && badge > 0)
+          Positioned(
+            right: 4,
+            top: 4,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: const BoxDecoration(
+                color: Color(0xFF2196F3),
+                shape: BoxShape.circle,
+              ),
+              constraints: const BoxConstraints(
+                minWidth: 20,
+                minHeight: 20,
+              ),
+              child: Text(
+                '$badge',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -693,6 +792,263 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         ),
       ),
     );
+  }
+
+  // ========== ПОИСК И ВЫБОР МАРШРУТОВ ==========
+
+  void _showSearchBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return DraggableScrollableSheet(
+            initialChildSize: 0.8,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+
+                    // Заголовок
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'Выбор маршрутов',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (_selectedRouteIds.isNotEmpty)
+                            TextButton.icon(
+                              onPressed: () {
+                                setState(() => _clearAllSelections());
+                                setModalState(() {});
+                              },
+                              icon: const Icon(Icons.clear_all),
+                              label: const Text('Очистить'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+
+                    // Список маршрутов с чекбоксами
+                    Expanded(
+                      child: ListView.builder(
+                        controller: scrollController,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: _routes.length,
+                        itemBuilder: (context, index) {
+                          final route = _routes[index];
+                          final isSelected = _selectedRouteIds.contains(route.id);
+                          final busCount = _busLocations
+                              .where((b) => b.routeNumber == route.number)
+                              .length;
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? _getBusTypeColor(route.busType).withOpacity(0.1)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isSelected
+                                    ? _getBusTypeColor(route.busType)
+                                    : Colors.grey[200]!,
+                                width: isSelected ? 2 : 1,
+                              ),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.all(16),
+                              leading: Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  color: _getBusTypeColor(route.busType).withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    route.number,
+                                    style: TextStyle(
+                                      color: _getBusTypeColor(route.busType),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              title: Text(
+                                route.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _getBusTypeLabel(route.busType),
+                                    style: TextStyle(
+                                      color: _getBusTypeColor(route.busType),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${route.startPoint} → ${route.endPoint}',
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  ),
+                                  if (busCount > 0) ...[
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.directions_bus,
+                                          size: 14,
+                                          color: _getBusTypeColor(route.busType),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'На линии: $busCount',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: _getBusTypeColor(route.busType),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              trailing: Checkbox(
+                                value: isSelected,
+                                onChanged: (value) {
+                                  setState(() => _toggleRouteSelection(route));
+                                  setModalState(() {});
+                                },
+                                activeColor: _getBusTypeColor(route.busType),
+                              ),
+                              onTap: () {
+                                setState(() => _toggleRouteSelection(route));
+                                setModalState(() {});
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
+                    // Кнопка применения
+                    if (_selectedRouteIds.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 10,
+                              offset: const Offset(0, -2),
+                            ),
+                          ],
+                        ),
+                        child: SafeArea(
+                          top: false,
+                          child: SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: ElevatedButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _focusOnSelectedRoutes();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2196F3),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: Text(
+                                'Показать выбранные (${_selectedRouteIds.length})',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  void _focusOnSelectedRoutes() {
+    if (_selectedRoutes.isEmpty) return;
+
+    // Собираем все точки выбранных маршрутов
+    List<LatLng> allPoints = [];
+    for (var route in _selectedRoutes) {
+      for (var point in route.path) {
+        allPoints.add(LatLng(
+          point['lat'].toDouble(),
+          point['lng'].toDouble(),
+        ));
+      }
+    }
+
+    if (allPoints.isEmpty) return;
+
+    // Находим границы
+    double minLat = allPoints.map((p) => p.latitude).reduce((a, b) => a < b ? a : b);
+    double maxLat = allPoints.map((p) => p.latitude).reduce((a, b) => a > b ? a : b);
+    double minLng = allPoints.map((p) => p.longitude).reduce((a, b) => a < b ? a : b);
+    double maxLng = allPoints.map((p) => p.longitude).reduce((a, b) => a > b ? a : b);
+
+    // Центр
+    LatLng center = LatLng(
+      (minLat + maxLat) / 2,
+      (minLng + maxLng) / 2,
+    );
+
+    // Приближаем карту
+    _mapController.move(center, 14.0);
   }
 
   void _showBusInfo(BusLocationModel bus) {
@@ -756,6 +1112,15 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                           style: TextStyle(
                             color: Colors.grey[600],
                             fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _getBusTypeLabel(bus.busType),
+                          style: TextStyle(
+                            color: _getBusTypeColor(bus.busType),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
