@@ -15,8 +15,24 @@ class PassengerMapScreen extends StatefulWidget {
 }
 
 class _PassengerMapScreenState extends State<PassengerMapScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
   final ApiService _apiService = ApiService();
   final MapController _mapController = MapController();
+
+  List<RouteModel> _getFilteredRoutes() {
+    if (_searchQuery.isEmpty) {
+      return _routes;
+    }
+
+    return _routes.where((route) {
+      final query = _searchQuery.toLowerCase();
+      return route.number.toLowerCase().contains(query) ||
+          route.name.toLowerCase().contains(query) ||
+          route.startPoint.toLowerCase().contains(query) ||
+          route.endPoint.toLowerCase().contains(query);
+    }).toList();
+  }
 
   List<RouteModel> _routes = [];
   List<BusLocationModel> _busLocations = [];
@@ -49,6 +65,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   void dispose() {
     _locationTimer?.cancel();
     _positionStream?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -854,12 +871,26 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   // ========== ПОИСК И ВЫБОР МАРШРУТОВ ==========
 
   void _showSearchBottomSheet() {
+    // Очищаем поиск при открытии
+    _searchController.clear();
+    _searchQuery = '';
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
+          final filteredRoutes = _searchQuery.isEmpty
+              ? _routes
+              : _routes.where((route) {
+            final query = _searchQuery.toLowerCase();
+            return route.number.toLowerCase().contains(query) ||
+                route.name.toLowerCase().contains(query) ||
+                route.startPoint.toLowerCase().contains(query) ||
+                route.endPoint.toLowerCase().contains(query);
+          }).toList();
+
           return DraggableScrollableSheet(
             initialChildSize: 0.8,
             minChildSize: 0.5,
@@ -872,6 +903,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                 ),
                 child: Column(
                   children: [
+                    // Верхняя полоска
                     Container(
                       margin: const EdgeInsets.only(top: 8),
                       width: 40,
@@ -882,9 +914,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       ),
                     ),
 
-                    // Заголовок
+                    // Заголовок + кнопка очистки
                     Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                       child: Row(
                         children: [
                           const Text(
@@ -911,14 +943,82 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       ),
                     ),
 
-                    // Список маршрутов с чекбоксами
+                    // ПОИСКОВАЯ СТРОКА
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: (value) {
+                          setModalState(() {
+                            _searchQuery = value;
+                          });
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Поиск по номеру или названию',
+                          hintStyle: TextStyle(color: Colors.grey[400]),
+                          prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                            icon: const Icon(Icons.clear, color: Colors.grey),
+                            onPressed: () {
+                              setModalState(() {
+                                _searchController.clear();
+                                _searchQuery = '';
+                              });
+                            },
+                          )
+                              : null,
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Список маршрутов
                     Expanded(
-                      child: ListView.builder(
+                      child: filteredRoutes.isEmpty
+                          ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search_off,
+                              size: 64,
+                              color: Colors.grey[300],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Ничего не найдено',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Попробуйте изменить запрос',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[400],
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                          : ListView.builder(
                         controller: scrollController,
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _routes.length,
+                        itemCount: filteredRoutes.length,
                         itemBuilder: (context, index) {
-                          final route = _routes[index];
+                          final route = filteredRoutes[index];
                           final isSelected = _selectedRouteIds.contains(route.id);
                           final busCount = _busLocations
                               .where((b) => b.routeNumber == route.number)
