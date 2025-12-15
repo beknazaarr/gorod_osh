@@ -27,7 +27,15 @@ class ApiService {
       print('📍 Отправка запроса на: ${ApiConstants.routes}');
       final response = await _dio.get(ApiConstants.routes);
       print('✅ Ответ получен: ${response.statusCode}');
-      final List<dynamic> data = response.data;
+      print('📦 Данные: ${response.data}'); // ← ДОБАВЬ ЭТО
+
+      final responseData = response.data;
+      final List<dynamic> data = responseData is Map && responseData.containsKey('results')
+          ? responseData['results']
+          : responseData;
+
+      print('🔢 Количество маршрутов: ${data.length}'); // ← И ЭТО
+
       return data
           .map((json) => RouteModel.fromJson(json))
           .where((route) => route.isActive)

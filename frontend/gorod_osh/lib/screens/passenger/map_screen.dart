@@ -306,8 +306,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
               ),
 
               // Линии ТОЛЬКО ВЫБРАННЫХ маршрутов
+              // Линии ТОЛЬКО ВЫБРАННЫХ маршрутов
               PolylineLayer(
-                polylines: (_selectedRoutes.isEmpty ? _routes : _selectedRoutes)
+                polylines: _selectedRoutes  // ← ПРОСТО ЭТО, БЕЗ УСЛОВИЯ
                     .where((route) => route.path.isNotEmpty)
                     .map((route) {
 
@@ -322,10 +323,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
                   return Polyline(
                     points: points,
-                    strokeWidth: _selectedRouteIds.contains(route.id) ? 6.0 : 4.0,
-                    color: _getBusTypeColor(route.busType).withOpacity(
-                      _selectedRouteIds.contains(route.id) ? 0.9 : 0.5,
-                    ),
+                    strokeWidth: 6.0,  // ← убрал условие, всегда толстая
+                    color: _getBusTypeColor(route.busType).withOpacity(0.9),  // ← всегда яркая
                   );
                 }).toList(),
               ),
@@ -489,12 +488,13 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
           ),
 
           // ========== КНОПКИ СПРАВА ==========
+          // ========== КНОПКИ СПРАВА ==========
           Positioned(
             right: 16,
-            bottom: 180,
+            bottom: 200,
             child: Column(
               children: [
-                _buildMapButton(
+                _buildWhiteCircleButton(
                   icon: Icons.add,
                   onPressed: () {
                     _mapController.move(
@@ -504,7 +504,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
-                _buildMapButton(
+                _buildWhiteCircleButton(
                   icon: Icons.remove,
                   onPressed: () {
                     _mapController.move(
@@ -514,95 +514,64 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
-                _buildMapButton(
-                  icon: _userLocation != null ? Icons.my_location : Icons.location_searching,
+                _buildWhiteCircleButton(
+                  icon: Icons.explore_outlined,
                   onPressed: _centerOnUser,
-                  color: _userLocation != null ? Colors.blue : null,
                 ),
                 const SizedBox(height: 12),
-                _buildMapButton(
-                  icon: Icons.layers,
-                  onPressed: () {},
+                _buildWhiteCircleButton(
+                  icon: Icons.layers_outlined,
+                  onPressed: () {
+                    // TODO: Переключение слоёв карты
+                  },
                 ),
               ],
             ),
           ),
 
           // ========== КНОПКИ НАД НИЖНЕЙ ПАНЕЛЬЮ ==========
+          // ========== КНОПКИ НАД НИЖНЕЙ ПАНЕЛЬЮ ==========
           Positioned(
-            left: 16,
-            right: 16,
+            left: 0,
+            right: 0,
             bottom: 90,
-            child: Row(
-              children: [
-                _buildActionButton(
-                  icon: Icons.search,
-                  onPressed: _showSearchBottomSheet,
-                  badge: _selectedRouteIds.isNotEmpty ? _selectedRouteIds.length : null,
-                ),
-                const SizedBox(width: 12),
-                _buildActionButton(
-                  icon: Icons.favorite_border,
-                  onPressed: () {},
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Container(
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2196F3),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF2196F3).withOpacity(0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+            child: Center(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
                     ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => _showRoutesList(),
-                        borderRadius: BorderRadius.circular(16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.route, color: Colors.white),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Маршруты',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (filteredBuses.isNotEmpty) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.3),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  '${filteredBuses.length}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                  ],
                 ),
-              ],
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildBottomIconButton(
+                      icon: Icons.search,
+                      onPressed: _showSearchBottomSheet,
+                      badge: _selectedRouteIds.isNotEmpty ? _selectedRouteIds.length : null,
+                    ),
+                    const SizedBox(width: 8),
+                    _buildBottomIconButton(
+                      icon: Icons.favorite_border,
+                      onPressed: () {
+                        // TODO: Избранные
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    _buildBottomIconButton(
+                      icon: Icons.route,
+                      onPressed: _showSearchBottomSheet,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
 
@@ -644,8 +613,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                         children: [
                           _buildNavButton(Icons.home, 'Главная', false),
                           _buildNavButton(Icons.directions_bus, 'Транспорт', true),
-                          _buildNavButton(Icons.chat_bubble_outline, 'Обращение', false),
-                          _buildNavButton(Icons.apps, 'Сервисы', false),
                           _buildNavButton(Icons.person_outline, 'Кабинет', false),
                         ],
                       ),
@@ -695,6 +662,84 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
+  // Белые круглые кнопки справа
+  Widget _buildWhiteCircleButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: IconButton(
+        icon: Icon(icon, size: 24),
+        onPressed: onPressed,
+        color: Colors.black87,
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+// Кнопки внизу в белом контейнере
+  Widget _buildBottomIconButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    int? badge,
+  }) {
+    return Stack(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+          ),
+          child: IconButton(
+            icon: Icon(icon, size: 24),
+            onPressed: onPressed,
+            color: Colors.black87,
+            padding: EdgeInsets.zero,
+          ),
+        ),
+        if (badge != null && badge > 0)
+          Positioned(
+            right: 0,
+            top: 0,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+              constraints: const BoxConstraints(
+                minWidth: 18,
+                minHeight: 18,
+              ),
+              child: Text(
+                '$badge',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
   Widget _buildMapButton({
     required IconData icon,
     required VoidCallback onPressed,
@@ -721,9 +766,10 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
-  Widget _buildActionButton({
+  Widget _buildRoundIconButton({
     required IconData icon,
     required VoidCallback onPressed,
+    Color? color,
     int? badge,
   }) {
     return Stack(
@@ -732,19 +778,20 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: const Color(0xFF3D5A80),
+            shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withOpacity(0.2),
                 blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
           child: IconButton(
-            icon: Icon(icon, size: 26),
+            icon: Icon(icon, size: 24),
             onPressed: onPressed,
-            color: Colors.black87,
+            color: color ?? Colors.white,
           ),
         ),
         if (badge != null && badge > 0)
@@ -754,7 +801,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
             child: Container(
               padding: const EdgeInsets.all(4),
               decoration: const BoxDecoration(
-                color: Color(0xFF2196F3),
+                color: Color(0xFFEE6C4D),
                 shape: BoxShape.circle,
               ),
               constraints: const BoxConstraints(

@@ -25,11 +25,9 @@ class RouteViewSet(viewsets.ModelViewSet):
     pagination_class = None
     
     def get_serializer_class(self):
-        """
-        Возвращает нужный сериализатор в зависимости от действия.
-        """
+        # ← ИЗМЕНИ ЭТУ ФУНКЦИЮ
         if self.action == 'list':
-            return RouteListSerializer
+            return RouteSerializer  # ← вместо RouteListSerializer
         elif self.action in ['create', 'update', 'partial_update']:
             return RouteCreateUpdateSerializer
         return RouteSerializer
