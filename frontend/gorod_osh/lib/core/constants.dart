@@ -6,4 +6,5 @@ class ApiConstants {
   static const String busesOnRoute = '$baseUrl/buses/on-route/';
   static const String locations = '$baseUrl/locations/';
   static const String latestLocations = '$baseUrl/locations/latest/';
+  static const String shifts = '$baseUrl/shifts/';
 }

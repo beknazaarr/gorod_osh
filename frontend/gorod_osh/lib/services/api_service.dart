@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import '../core/constants.dart';
 import '../models/route.dart';
 import '../models/bus_location.dart';
+import '../models/bus.dart';
 
 class ApiService {
   final Dio _dio = Dio(
@@ -53,6 +54,21 @@ class ApiService {
       return RouteModel.fromJson(response.data);
     } catch (e) {
       print('❌ Ошибка загрузки пути маршрута: $e');
+      rethrow;
+    }
+  }
+
+  // Получить доступные автобусы (без активной смены)
+  Future<List<BusModel>> getAvailableBuses() async {
+    try {
+      print('📍 Отправка запроса на: ${ApiConstants.buses}available/');
+      final response = await _dio.get('${ApiConstants.buses}available/');
+      print('✅ Доступные автобусы получены: ${response.statusCode}');
+
+      final List<dynamic> data = response.data;
+      return data.map((json) => BusModel.fromJson(json)).toList();
+    } catch (e) {
+      print('❌ Ошибка загрузки автобусов: $e');
       rethrow;
     }
   }

@@ -6,7 +6,6 @@ import '../../services/api_service.dart';
 import '../../models/route.dart';
 import '../../models/bus_location.dart';
 import 'dart:async';
-import '../driver/login_screen.dart';
 
 class PassengerMapScreen extends StatefulWidget {
   const PassengerMapScreen({super.key});
@@ -40,7 +39,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
   // ========== ВЫБРАННЫЕ МАРШРУТЫ ==========
   Set<int> _selectedRouteIds = {};
-  String? _selectedBusTypeFilter;
   List<RouteModel> _selectedRoutes = [];
 
   bool _isLoading = true;
@@ -844,17 +842,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
   Widget _buildNavButton(IconData icon, String label, bool isActive) {
     return InkWell(
-      onTap: () {
-        if (label == 'Кабинет') {
-          // Переход на экран авторизации водителя
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const DriverLoginScreen(),
-            ),
-          );
-        }
-      },
+      onTap: () {},
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
         child: Column(
@@ -883,6 +871,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   // ========== ПОИСК И ВЫБОР МАРШРУТОВ ==========
 
   void _showSearchBottomSheet() {
+    // Очищаем поиск при открытии
     _searchController.clear();
     _searchQuery = '';
 
@@ -892,16 +881,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
-          // Фильтрация маршрутов
-          List<RouteModel> filteredRoutes = _routes.where((route) {
-            // Фильтр по типу транспорта
-            if (_selectedBusTypeFilter != null && route.busType != _selectedBusTypeFilter) {
-              return false;
-            }
-
-            // Фильтр по поиску
-            if (_searchQuery.isEmpty) return true;
-
+          final filteredRoutes = _searchQuery.isEmpty
+              ? _routes
+              : _routes.where((route) {
             final query = _searchQuery.toLowerCase();
             return route.number.toLowerCase().contains(query) ||
                 route.name.toLowerCase().contains(query) ||
@@ -934,193 +916,72 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
                     // Заголовок + кнопка очистки
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                       child: Row(
                         children: [
                           const Text(
                             'Выбор маршрутов',
                             style: TextStyle(
-                              fontSize: 22,
+                              fontSize: 24,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF0D2F5B),
                             ),
                           ),
                           const Spacer(),
-                          if (_selectedRouteIds.isNotEmpty ||
-                              _selectedBusTypeFilter != null ||
-                              _searchQuery.isNotEmpty)
-                            Container(
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF3B30),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(20),
-                                  onTap: () {
-                                    setState(() {
-                                      _selectedRouteIds.clear();
-                                      _selectedRoutes.clear();
-                                    });
-                                    setModalState(() {
-                                      _selectedBusTypeFilter = null;
-                                      _searchController.clear();
-                                      _searchQuery = '';
-                                    });
-                                  },
-                                  child: const Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.close, color: Colors.white, size: 18),
-                                        SizedBox(width: 6),
-                                        Text(
-                                          'Очистить',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
+                          if (_selectedRouteIds.isNotEmpty)
+                            TextButton.icon(
+                              onPressed: () {
+                                setState(() => _clearAllSelections());
+                                setModalState(() {});
+                              },
+                              icon: const Icon(Icons.clear_all),
+                              label: const Text('Очистить'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red,
                               ),
                             ),
                         ],
                       ),
                     ),
 
-                    // ПОИСКОВАЯ СТРОКА
                     // ПОИСКОВАЯ СТРОКА
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF5F5F5),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: (value) {
-                            setModalState(() {
-                              _searchQuery = value;
-                            });
-                          },
-                          decoration: InputDecoration(
-                            hintText: 'Поиск по номеру или названию',
-                            hintStyle: const TextStyle(
-                              color: Color(0xFF8E8E93),
-                              fontSize: 16,
-                            ),
-                            prefixIcon: const Icon(
-                              Icons.search,
-                              color: Color(0xFF8E8E93),
-                              size: 22,
-                            ),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                              icon: const Icon(
-                                Icons.cancel,
-                                color: Color(0xFF8E8E93),
-                                size: 20,
-                              ),
-                              onPressed: () {
-                                setModalState(() {
-                                  _searchController.clear();
-                                  _searchQuery = '';
-                                });
-                              },
-                            )
-                                : null,
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: (value) {
+                          setModalState(() {
+                            _searchQuery = value;
+                          });
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Поиск по номеру или названию',
+                          hintStyle: TextStyle(color: Colors.grey[400]),
+                          prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                            icon: const Icon(Icons.clear, color: Colors.grey),
+                            onPressed: () {
+                              setModalState(() {
+                                _searchController.clear();
+                                _searchQuery = '';
+                              });
+                            },
+                          )
+                              : null,
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
                           ),
                         ),
                       ),
                     ),
 
-                    // ФИЛЬТРЫ ПО ТИПУ ТРАНСПОРТА
-                    Container(
-                      height: 50,
-                      padding: const EdgeInsets.only(left: 20),
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          _buildFilterChip(
-                            label: 'Все',
-                            icon: Icons.select_all,
-                            isSelected: _selectedBusTypeFilter == null,
-                            onTap: () {
-                              setModalState(() {
-                                _selectedBusTypeFilter = null;
-                              });
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterChip(
-                            label: 'Автобус',
-                            icon: Icons.directions_bus,
-                            color: const Color(0xFF2196F3),
-                            isSelected: _selectedBusTypeFilter == 'bus',
-                            onTap: () {
-                              setModalState(() {
-                                _selectedBusTypeFilter =
-                                _selectedBusTypeFilter == 'bus' ? null : 'bus';
-                              });
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterChip(
-                            label: 'Троллейбус',
-                            icon: Icons.directions_bus_filled,
-                            color: const Color(0xFF4CAF50),
-                            isSelected: _selectedBusTypeFilter == 'trolleybus',
-                            onTap: () {
-                              setModalState(() {
-                                _selectedBusTypeFilter =
-                                _selectedBusTypeFilter == 'trolleybus' ? null : 'trolleybus';
-                              });
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterChip(
-                            label: 'Электробус',
-                            icon: Icons.ev_station,
-                            color: const Color(0xFF9800),
-                            isSelected: _selectedBusTypeFilter == 'electric_bus',
-                            onTap: () {
-                              setModalState(() {
-                                _selectedBusTypeFilter =
-                                _selectedBusTypeFilter == 'electric_bus' ? null : 'electric_bus';
-                              });
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterChip(
-                            label: 'Маршрутка',
-                            icon: Icons.airport_shuttle,
-                            color: const Color(0xFFF44336),
-                            isSelected: _selectedBusTypeFilter == 'minibus',
-                            onTap: () {
-                              setModalState(() {
-                                _selectedBusTypeFilter =
-                                _selectedBusTypeFilter == 'minibus' ? null : 'minibus';
-                              });
-                            },
-                          ),
-                          const SizedBox(width: 20),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
                     // Список маршрутов
                     Expanded(
                       child: filteredRoutes.isEmpty
@@ -1138,8 +999,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                               'Ничего не найдено',
                               style: TextStyle(
                                 fontSize: 18,
-                                color: Colors.grey[600],
-                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[500],
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -1167,118 +1027,96 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
+                              color: isSelected
+                                  ? _getBusTypeColor(route.busType).withOpacity(0.1)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: const Color(0xFFE5E5EA),
-                                width: 1,
+                                color: isSelected
+                                    ? _getBusTypeColor(route.busType)
+                                    : Colors.grey[200]!,
+                                width: isSelected ? 2 : 1,
                               ),
                             ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () {
-                                  setState(() => _toggleRouteSelection(route));
-                                  setModalState(() {});
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Row(
-                                    children: [
-                                      // НОМЕР МАРШРУТА
-                                      Container(
-                                        width: 56,
-                                        height: 56,
-                                        decoration: BoxDecoration(
-                                          color: _getBusTypeColor(route.busType)
-                                              .withOpacity(0.12),
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Center(
-                                          child: Text(
-                                            route.number,
-                                            style: TextStyle(
-                                              color: _getBusTypeColor(route.busType),
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-
-                                      const SizedBox(width: 16),
-
-                                      // ИНФОРМАЦИЯ
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            // ТИП ТРАНСПОРТА
-                                            Text(
-                                              _getBusTypeLabel(route.busType),
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w600,
-                                                color: _getBusTypeColor(route.busType),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            // ВРЕМЯ РАБОТЫ
-                                            if (route.workingHours != null)
-                                              Row(
-                                                children: [
-                                                  const Text(
-                                                    'Время работы: ',
-                                                    style: TextStyle(
-                                                      fontSize: 13,
-                                                      color: Color(0xFF8E8E93),
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    route.workingHours!,
-                                                    style: const TextStyle(
-                                                      fontSize: 13,
-                                                      color: Color(0xFF3C3C43),
-                                                      fontWeight: FontWeight.w500,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-
-                                      const SizedBox(width: 8),
-
-                                      // ГАЛОЧКА
-                                      Container(
-                                        width: 28,
-                                        height: 28,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: isSelected
-                                                ? const Color(0xFF2196F3)
-                                                : const Color(0xFFD1D1D6),
-                                            width: 2,
-                                          ),
-                                          color: isSelected
-                                              ? const Color(0xFF2196F3)
-                                              : Colors.transparent,
-                                        ),
-                                        child: isSelected
-                                            ? const Icon(
-                                          Icons.check,
-                                          color: Colors.white,
-                                          size: 18,
-                                        )
-                                            : null,
-                                      ),
-                                    ],
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.all(16),
+                              leading: Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  color: _getBusTypeColor(route.busType).withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    route.number,
+                                    style: TextStyle(
+                                      color: _getBusTypeColor(route.busType),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                    ),
                                   ),
                                 ),
                               ),
+                              title: Text(
+                                route.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _getBusTypeLabel(route.busType),
+                                    style: TextStyle(
+                                      color: _getBusTypeColor(route.busType),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${route.startPoint} → ${route.endPoint}',
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  ),
+                                  if (busCount > 0) ...[
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.directions_bus,
+                                          size: 14,
+                                          color: _getBusTypeColor(route.busType),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'На линии: $busCount',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: _getBusTypeColor(route.busType),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              trailing: Checkbox(
+                                value: isSelected,
+                                onChanged: (value) {
+                                  setState(() => _toggleRouteSelection(route));
+                                  setModalState(() {});
+                                },
+                                activeColor: _getBusTypeColor(route.busType),
+                              ),
+                              onTap: () {
+                                setState(() => _toggleRouteSelection(route));
+                                setModalState(() {});
+                              },
                             ),
                           );
                         },
@@ -1502,55 +1340,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
-  Widget _buildFilterChip({
-    required String label,
-    required IconData icon,
-    Color? color,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? (color ?? const Color(0xFF2196F3)).withOpacity(0.12)
-              : const Color(0xFFF5F5F5),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected
-                ? (color ?? const Color(0xFF2196F3))
-                : Colors.transparent,
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: isSelected
-                  ? (color ?? const Color(0xFF2196F3))
-                  : const Color(0xFF8E8E93),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isSelected
-                    ? (color ?? const Color(0xFF2196F3))
-                    : const Color(0xFF3C3C43),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
   void _showRoutesList() {
     showModalBottomSheet(
       context: context,
