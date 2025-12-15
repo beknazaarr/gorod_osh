@@ -25,7 +25,75 @@ class _SelectBusScreenState extends State<SelectBusScreen> {
   @override
   void initState() {
     super.initState();
-    _loadAvailableBuses();
+    _checkActiveShiftAndLoadBuses();
+  }
+
+  Future<void> _checkActiveShiftAndLoadBuses() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      // Проверяем есть ли активная смена
+      final activeShift = await _shiftService.getMyActiveShift();
+
+      if (activeShift != null && mounted) {
+        // Если есть активная смена - спрашиваем что делать
+        final shouldContinue = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Активная смена'),
+            content: Text(
+                'У вас уже есть активная смена на автобусе ${activeShift['bus_info']?['bus_number'] ?? 'неизвестен'}.\n\nПродолжить смену или завершить?'
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Завершить'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4CAF50),
+                ),
+                child: const Text('Продолжить'),
+              ),
+            ],
+          ),
+        );
+
+        if (!mounted) return;
+
+        if (shouldContinue == true) {
+          // Продолжаем активную смену
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const ActiveShiftScreen()),
+          );
+          return;
+        } else if (shouldContinue == false) {
+          // Завершаем старую смену
+          final completed = await _shiftService.completeShift();
+          if (!completed) {
+            setState(() {
+              _error = 'Не удалось завершить смену';
+              _isLoading = false;
+            });
+            return;
+          }
+        }
+      }
+
+      // Загружаем доступные автобусы
+      await _loadAvailableBuses();
+    } catch (e) {
+      setState(() {
+        _error = 'Ошибка: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _loadAvailableBuses() async {
@@ -134,7 +202,7 @@ class _SelectBusScreenState extends State<SelectBusScreen> {
             Text(_error!),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _loadAvailableBuses,
+              onPressed: _checkActiveShiftAndLoadBuses,
               child: const Text('Повторить'),
             ),
           ],

@@ -1,6 +1,3 @@
-from django.shortcuts import render
-
-# Create your views here.
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -12,23 +9,12 @@ from .serializers import (
     ShiftSerializer, ShiftListSerializer, ShiftStartSerializer,
     ShiftHistorySerializer
 )
+import json
 
 
 class ShiftViewSet(viewsets.ModelViewSet):
     """
     ViewSet для управления сменами.
-    
-    Endpoints:
-    - GET    /api/shifts/              - Список всех смен
-    - GET    /api/shifts/{id}/         - Получить смену
-    - DELETE /api/shifts/{id}/         - Удалить смену
-    - POST   /api/shifts/start/        - Начать смену
-    - POST   /api/shifts/complete/     - Завершить текущую смену
-    - GET    /api/shifts/active/       - Активные смены
-    - GET    /api/shifts/my-active/    - Моя активная смена
-    - GET    /api/shifts/my-history/   - Моя история смен
-    - GET    /api/shifts/history/      - История всех смен
-    - GET    /api/shifts/statistics/   - Статистика по сменам
     """
     queryset = Shift.objects.select_related('driver', 'bus', 'bus__route').all()
     permission_classes = [IsAuthenticated]
@@ -63,15 +49,43 @@ class ShiftViewSet(viewsets.ModelViewSet):
             "bus": 1
         }
         """
-        serializer = self.get_serializer(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        shift = serializer.save()
+        # ОТЛАДКА
+        print(f"\n{'='*60}")
+        print(f"🚀 ЗАПРОС НА НАЧАЛО СМЕНЫ")
+        print(f"{'='*60}")
+        print(f"👤 Пользователь: {request.user}")
+        print(f"📦 Данные запроса: {json.dumps(request.data, indent=2, ensure_ascii=False)}")
         
-        response_serializer = ShiftSerializer(shift)
-        return Response(
-            response_serializer.data,
-            status=status.HTTP_201_CREATED
-        )
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        
+        if not serializer.is_valid():
+            print(f"❌ ОШИБКИ ВАЛИДАЦИИ:")
+            for field, errors in serializer.errors.items():
+                print(f"   - {field}: {errors}")
+            print(f"{'='*60}\n")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            shift = serializer.save()
+            print(f"✅ Смена начата:")
+            print(f"   - ID смены: {shift.id}")
+            print(f"   - Автобус: {shift.bus.registration_number}")
+            print(f"   - Маршрут: {shift.bus.route.number if shift.bus.route else 'НЕТ'}")
+            print(f"{'='*60}\n")
+            
+            response_serializer = ShiftSerializer(shift)
+            return Response(
+                response_serializer.data,
+                status=status.HTTP_201_CREATED
+            )
+        except Exception as e:
+            print(f"❌ ОШИБКА ПРИ СОХРАНЕНИИ СМЕНЫ:")
+            print(f"   - {type(e).__name__}: {e}")
+            print(f"{'='*60}\n")
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
     
     @action(detail=False, methods=['post'])
     def complete(self, request):

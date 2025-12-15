@@ -86,11 +86,22 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
     setState(() => _isSending = true);
 
     try {
+      // ВАЖНО: Округляем координаты до 6 знаков после запятой
+      final latitude = double.parse(_lastPosition!.latitude.toStringAsFixed(6));
+      final longitude = double.parse(_lastPosition!.longitude.toStringAsFixed(6));
+      final speed = double.parse((_lastPosition!.speed * 3.6).toStringAsFixed(2)); // м/с -> км/ч
+      final heading = double.parse(_lastPosition!.heading.toStringAsFixed(2));
+
+      print('📍 Отправка координат:');
+      print('   lat: $latitude');
+      print('   lng: $longitude');
+      print('   speed: $speed км/ч');
+
       final success = await _shiftService.sendLocation(
-        _lastPosition!.latitude,
-        _lastPosition!.longitude,
-        speed: _lastPosition!.speed * 3.6, // м/с -> км/ч
-        heading: _lastPosition!.heading,
+        latitude,
+        longitude,
+        speed: speed,
+        heading: heading,
       );
 
       if (success) {
@@ -98,9 +109,10 @@ class _ActiveShiftScreenState extends State<ActiveShiftScreen> {
           _locationsSent++;
           _isSending = false;
         });
-        print('📍 Координаты отправлены: $_locationsSent');
+        print('✅ Координаты отправлены: $_locationsSent');
       } else {
         setState(() => _isSending = false);
+        print('⚠️ Не удалось отправить координаты');
       }
     } catch (e) {
       print('❌ Ошибка отправки координат: $e');

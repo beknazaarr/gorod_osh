@@ -3,6 +3,7 @@ import '../core/constants.dart';
 import '../models/route.dart';
 import '../models/bus_location.dart';
 import '../models/bus.dart';
+import 'auth_service.dart';
 
 class ApiService {
   final Dio _dio = Dio(
@@ -22,20 +23,23 @@ class ApiService {
     ),
   );
 
-  // Получить все активные маршруты
+  // Singleton AuthService
+  final AuthService _authService = AuthService();
+
+  // Получить все активные маршруты (публичный доступ)
   Future<List<RouteModel>> getActiveRoutes() async {
     try {
       print('📍 Отправка запроса на: ${ApiConstants.routes}');
       final response = await _dio.get(ApiConstants.routes);
       print('✅ Ответ получен: ${response.statusCode}');
-      print('📦 Данные: ${response.data}'); // ← ДОБАВЬ ЭТО
+      print('📦 Данные: ${response.data}');
 
       final responseData = response.data;
       final List<dynamic> data = responseData is Map && responseData.containsKey('results')
           ? responseData['results']
           : responseData;
 
-      print('🔢 Количество маршрутов: ${data.length}'); // ← И ЭТО
+      print('🔢 Количество маршрутов: ${data.length}');
 
       return data
           .map((json) => RouteModel.fromJson(json))
@@ -58,22 +62,44 @@ class ApiService {
     }
   }
 
-  // Получить доступные автобусы (без активной смены)
+  // Получить доступные автобусы (ТРЕБУЕТСЯ АВТОРИЗАЦИЯ!)
   Future<List<BusModel>> getAvailableBuses() async {
     try {
+      final token = _authService.accessToken;
+
+      if (token == null) {
+        print('❌ Нет токена для получения автобусов');
+        throw Exception('Требуется авторизация');
+      }
+
       print('📍 Отправка запроса на: ${ApiConstants.buses}available/');
-      final response = await _dio.get('${ApiConstants.buses}available/');
+      print('🎫 Токен: ${token.substring(0, 20)}...');
+
+      final response = await _dio.get(
+        '${ApiConstants.buses}available/',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+
       print('✅ Доступные автобусы получены: ${response.statusCode}');
+      print('📦 Данных: ${response.data.length}');
 
       final List<dynamic> data = response.data;
       return data.map((json) => BusModel.fromJson(json)).toList();
     } catch (e) {
       print('❌ Ошибка загрузки автобусов: $e');
+      if (e is DioException) {
+        print('📝 Статус: ${e.response?.statusCode}');
+        print('📝 Детали: ${e.response?.data}');
+      }
       rethrow;
     }
   }
 
-  // Получить последние координаты всех автобусов
+  // Получить последние координаты всех автобусов (публичный доступ)
   Future<List<BusLocationModel>> getLatestBusLocations({
     int? routeId,
     String? busType,

@@ -12,21 +12,12 @@ from .serializers import (
     BusLocationListSerializer, BusLocationTrackSerializer
 )
 from user.permissions import IsDriver
+import json
 
 
 class BusLocationViewSet(viewsets.ModelViewSet):
     """
     ViewSet для управления местоположениями автобусов.
-    
-    Endpoints:
-    - GET    /api/locations/              - Список координат
-    - POST   /api/locations/              - Добавить координату (водитель)
-    - GET    /api/locations/{id}/         - Получить координату
-    - POST   /api/locations/send/         - Отправить координату (упрощённый endpoint)
-    - GET    /api/locations/latest/       - Последние координаты всех автобусов
-    - GET    /api/locations/bus/{bus_id}/ - История координат автобуса
-    - GET    /api/locations/shift/{shift_id}/ - Координаты конкретной смены
-    - GET    /api/locations/track/        - Трек текущей смены водителя
     """
     queryset = BusLocation.objects.select_related('bus', 'shift', 'shift__driver').all()
     
@@ -58,13 +49,26 @@ class BusLocationViewSet(viewsets.ModelViewSet):
         Создать запись координаты.
         Доступно только водителям с активной сменой.
         """
+        # ОТЛАДКА: Логируем все данные
+        print(f"\n{'='*60}")
+        print(f"📍 ПОЛУЧЕН ЗАПРОС НА ОТПРАВКУ КООРДИНАТ")
+        print(f"{'='*60}")
+        print(f"👤 Пользователь: {request.user}")
+        print(f"📦 Данные запроса: {json.dumps(request.data, indent=2, ensure_ascii=False)}")
+        
         # Получаем активную смену
         try:
             shift = Shift.objects.select_related('bus', 'bus__route').get(
                 driver=request.user, 
                 status='active'
             )
+            print(f"✅ Активная смена найдена:")
+            print(f"   - ID смены: {shift.id}")
+            print(f"   - Автобус: {shift.bus.registration_number}")
+            print(f"   - Маршрут: {shift.bus.route.number if shift.bus.route else 'НЕТ МАРШРУТА'}")
         except Shift.DoesNotExist:
+            print(f"❌ У пользователя {request.user} НЕТ активной смены")
+            print(f"{'='*60}\n")
             return Response(
                 {'detail': 'У вас нет активной смены'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -74,8 +78,23 @@ class BusLocationViewSet(viewsets.ModelViewSet):
             data=request.data,
             context={'request': request, 'shift': shift}
         )
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+        
+        # ОТЛАДКА: Проверяем валидацию
+        if not serializer.is_valid():
+            print(f"❌ ОШИБКИ ВАЛИДАЦИИ:")
+            for field, errors in serializer.errors.items():
+                print(f"   - {field}: {errors}")
+            print(f"{'='*60}\n")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Сохраняем
+        location = serializer.save()
+        print(f"✅ Координаты сохранены:")
+        print(f"   - Широта: {location.latitude}")
+        print(f"   - Долгота: {location.longitude}")
+        print(f"   - Скорость: {location.speed}")
+        print(f"   - ID записи: {location.id}")
+        print(f"{'='*60}\n")
         
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
@@ -137,6 +156,11 @@ class BusLocationViewSet(viewsets.ModelViewSet):
             if shift.latest_location_id
         ]
         
+        # ОТЛАДКА
+        print(f"\n📊 ЗАПРОС ПОСЛЕДНИХ КООРДИНАТ:")
+        print(f"   - Активных смен: {active_shifts.count()}")
+        print(f"   - Координат для отправки: {len(location_ids)}")
+        
         # Получаем все координаты одним запросом
         locations_dict = {
             loc.shift_id: loc 
@@ -162,6 +186,9 @@ class BusLocationViewSet(viewsets.ModelViewSet):
                     'accuracy': location.accuracy,
                     'timestamp': location.timestamp
                 })
+                print(f"   ✅ Автобус {shift.bus.registration_number} - маршрут {shift.bus.route.number if shift.bus.route else 'НЕТ'}")
+        
+        print(f"   📤 Отправлено координат: {len(locations)}\n")
         
         return Response(locations)
     
@@ -176,7 +203,7 @@ class BusLocationViewSet(viewsets.ModelViewSet):
         - limit: максимум записей (по умолчанию 100, максимум 1000)
         """
         hours = int(request.query_params.get('hours', 1))
-        limit = min(int(request.query_params.get('limit', 100)), 1000)  # Ограничение
+        limit = min(int(request.query_params.get('limit', 100)), 1000)
         
         start_time = timezone.now() - timedelta(hours=hours)
         
@@ -197,7 +224,7 @@ class BusLocationViewSet(viewsets.ModelViewSet):
         Query params:
         - limit: максимум записей (по умолчанию 500, максимум 2000)
         """
-        limit = min(int(request.query_params.get('limit', 500)), 2000)  # Ограничение
+        limit = min(int(request.query_params.get('limit', 500)), 2000)
         
         # Проверяем существование смены
         try:
@@ -246,7 +273,7 @@ class BusLocationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        limit = min(int(request.query_params.get('limit', 200)), 1000)  # Ограничение
+        limit = min(int(request.query_params.get('limit', 200)), 1000)
         
         # Координаты по возрастанию времени для построения трека
         locations = BusLocation.objects.filter(
