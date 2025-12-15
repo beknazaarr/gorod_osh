@@ -24,11 +24,14 @@ class ApiService {
   // Получить все активные маршруты
   Future<List<RouteModel>> getActiveRoutes() async {
     try {
-      print('📍 Отправка запроса на: ${ApiConstants.routes}active/');
-      final response = await _dio.get(ApiConstants.routes + 'active/');
+      print('📍 Отправка запроса на: ${ApiConstants.routes}');
+      final response = await _dio.get(ApiConstants.routes);
       print('✅ Ответ получен: ${response.statusCode}');
       final List<dynamic> data = response.data;
-      return data.map((json) => RouteModel.fromJson(json)).toList();
+      return data
+          .map((json) => RouteModel.fromJson(json))
+          .where((route) => route.isActive)
+          .toList();
     } catch (e) {
       print('❌ Ошибка загрузки маршрутов: $e');
       rethrow;

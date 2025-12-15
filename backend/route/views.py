@@ -22,6 +22,7 @@ class RouteViewSet(viewsets.ModelViewSet):
     - GET    /api/routes/{id}/path/ - Только путь маршрута
     """
     queryset = Route.objects.all()
+    pagination_class = None
     
     def get_serializer_class(self):
         """

@@ -152,6 +152,13 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         _routes = routes;
         _busLocations = locations;
         _isLoading = false;
+        print('🗺️ Загружено маршрутов: ${_routes.length}');
+        for (var route in _routes) {
+          print('Маршрут ${route.number}: path = ${route.path.length} точек');
+          if (route.path.isNotEmpty) {
+            print('Первая точка: ${route.path.first}');
+          }
+        }
       });
     } catch (e) {
       setState(() {
@@ -303,6 +310,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                 polylines: (_selectedRoutes.isEmpty ? _routes : _selectedRoutes)
                     .where((route) => route.path.isNotEmpty)
                     .map((route) {
+
+                  print('🎨 Рисуем маршрут ${route.number}, точек: ${route.path.length}');
+
                   List<LatLng> points = route.path.map((point) {
                     return LatLng(
                       point['lat'].toDouble(),
