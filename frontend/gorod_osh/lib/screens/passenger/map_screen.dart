@@ -226,8 +226,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   }
 
   List<BusLocationModel> _getFilteredBusLocations() {
+    // ЕСЛИ НЕ ВЫБРАНО НИ ОДНОГО МАРШРУТА - НЕ ПОКАЗЫВАЕМ АВТОБУСЫ
     if (_selectedRouteIds.isEmpty) {
-      return _busLocations;
+      return []; // Возвращаем пустой список
     }
 
     // Фильтруем автобусы только по выбранным маршрутам
@@ -245,13 +246,13 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       case 'bus':
         return const Color(0xFF2196F3);
       case 'trolleybus':
-        return const Color(0xFF4CAF50);
+        return const Color(0xFF2196F3);
       case 'electric_bus':
-        return const Color(0xFFFF9800);
+        return const Color(0xFF2196F3);
       case 'minibus':
-        return const Color(0xFFF44336);
+        return const Color(0xFF2196F3);
       default:
-        return const Color(0xFF9E9E9E);
+        return const Color(0xFF2196F3);
     }
   }
 
@@ -349,43 +350,67 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
               ),
 
               // Маркеры автобусов (отфильтрованные)
+              // Маркеры автобусов (отфильтрованные)
               MarkerLayer(
                 markers: filteredBuses.map((bus) {
                   return Marker(
                     point: LatLng(bus.latitude, bus.longitude),
-                    width: 46,
-                    height: 46,
+                    width: 70,
+                    height: 90,
                     child: GestureDetector(
                       onTap: () => _showBusInfo(bus),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 6,
-                              spreadRadius: 1,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Номер маршрута сверху
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2196F3),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.all(3),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: _getBusTypeColor(bus.busType),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
                             child: Text(
                               bus.routeNumber ?? '?',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                                fontSize: 16,
                               ),
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 4),
+                          // Иконка автобуса с направлением
+                          Transform.rotate(
+                            angle: (bus.heading ?? 0) * 3.14159 / 180, // Поворот по направлению
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2196F3),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.navigation,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   );

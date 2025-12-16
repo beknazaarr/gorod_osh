@@ -33,7 +33,6 @@ class _SplashScreenState extends State<SplashScreen> {
     Timer(const Duration(seconds: 3), () {
       Navigator.pushReplacement(
         context,
-        // ↓ ИЗМЕНИ ЭТУ СТРОКУ
         MaterialPageRoute(builder: (_) => const PassengerMapScreen()),
       );
     });
@@ -43,10 +42,10 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D2F5B),
-      body: Center(
+      body: SizedBox.expand(
         child: Image.asset(
           'assets/images/logo.png',
-          width: 150,
+          fit: BoxFit.cover, // Заполняет весь экран, может обрезать края
         ),
       ),
     );
