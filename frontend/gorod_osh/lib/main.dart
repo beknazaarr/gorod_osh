@@ -1,8 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'screens/passenger/map_screen.dart';
+import 'services/favorites_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Инициализируем избранное
+  await FavoritesService().init();
+
   runApp(const MyApp());
 }
 
@@ -45,7 +51,7 @@ class _SplashScreenState extends State<SplashScreen> {
       body: SizedBox.expand(
         child: Image.asset(
           'assets/images/logo.png',
-          fit: BoxFit.cover, // Заполняет весь экран, может обрезать края
+          fit: BoxFit.cover,
         ),
       ),
     );

@@ -7,6 +7,7 @@ import '../../models/route.dart';
 import '../../models/bus_location.dart';
 import 'dart:async';
 import '../driver/login_screen.dart';
+import '../../services/favorites_service.dart';
 
 class PassengerMapScreen extends StatefulWidget {
   const PassengerMapScreen({super.key});
@@ -19,6 +20,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   final ApiService _apiService = ApiService();
+  final FavoritesService _favoritesService = FavoritesService();
   final MapController _mapController = MapController();
 
   List<RouteModel> _getFilteredRoutes() {
@@ -604,9 +606,10 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     const SizedBox(width: 8),
                     _buildBottomIconButton(
                       icon: Icons.favorite_border,
-                      onPressed: () {
-                        // TODO: Избранные
-                      },
+                      onPressed: () => _showSearchBottomSheet(showOnlyFavorites: true),  // ← ИЗМЕНИТЬ ЭТО
+                      badge: _favoritesService.getFavoriteIds().length > 0                // ← ДОБАВИТЬ
+                          ? _favoritesService.getFavoriteIds().length                     // ← ДОБАВИТЬ
+                          : null,                                                          // ← ДОБАВИТЬ
                     ),
                     const SizedBox(width: 8),
                     _buildBottomIconButton(
@@ -907,7 +910,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
   // ========== ПОИСК И ВЫБОР МАРШРУТОВ ==========
 
-  void _showSearchBottomSheet() {
+  void _showSearchBottomSheet({bool showOnlyFavorites = false}) {
     _searchController.clear();
     _searchQuery = '';
 
@@ -917,8 +920,16 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
+          // Получаем избранные маршруты
+          final favoriteIds = _favoritesService.getFavoriteIds();
+
+          // Определяем какие маршруты показывать
+          List<RouteModel> displayRoutes = showOnlyFavorites
+              ? _routes.where((route) => favoriteIds.contains(route.id)).toList()
+              : _routes;
+
           // Фильтрация маршрутов
-          List<RouteModel> filteredRoutes = _routes.where((route) {
+          List<RouteModel> filteredRoutes = displayRoutes.where((route) {
             // Фильтр по типу транспорта
             if (_selectedBusTypeFilter != null && route.busType != _selectedBusTypeFilter) {
               return false;
@@ -962,9 +973,19 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                       child: Row(
                         children: [
-                          const Text(
-                            'Выбор маршрутов',
-                            style: TextStyle(
+                          // Иконка сердца для избранных
+                          if (showOnlyFavorites) ...[
+                            const Icon(
+                              Icons.favorite,
+                              color: Colors.red,
+                              size: 28,
+                            ),
+                            const SizedBox(width: 12),
+                          ],
+                          // Заголовок
+                          Text(
+                            showOnlyFavorites ? 'Избранные маршруты' : 'Выбор маршрутов',
+                            style: const TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
                               color: Color(0xFF0D2F5B),
@@ -1019,133 +1040,135 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       ),
                     ),
 
-                    // ПОИСКОВАЯ СТРОКА
-                    // ПОИСКОВАЯ СТРОКА
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF5F5F5),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: (value) {
-                            setModalState(() {
-                              _searchQuery = value;
-                            });
-                          },
-                          decoration: InputDecoration(
-                            hintText: 'Поиск по номеру или названию',
-                            hintStyle: const TextStyle(
-                              color: Color(0xFF8E8E93),
-                              fontSize: 16,
-                            ),
-                            prefixIcon: const Icon(
-                              Icons.search,
-                              color: Color(0xFF8E8E93),
-                              size: 22,
-                            ),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                              icon: const Icon(
-                                Icons.cancel,
+                    // ПОИСКОВАЯ СТРОКА (только если НЕ избранные)
+                    if (!showOnlyFavorites)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF5F5F5),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (value) {
+                              setModalState(() {
+                                _searchQuery = value;
+                              });
+                            },
+                            decoration: InputDecoration(
+                              hintText: 'Поиск по номеру или названию',
+                              hintStyle: const TextStyle(
                                 color: Color(0xFF8E8E93),
-                                size: 20,
+                                fontSize: 16,
                               ),
-                              onPressed: () {
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: Color(0xFF8E8E93),
+                                size: 22,
+                              ),
+                              suffixIcon: _searchQuery.isNotEmpty
+                                  ? IconButton(
+                                icon: const Icon(
+                                  Icons.cancel,
+                                  color: Color(0xFF8E8E93),
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  setModalState(() {
+                                    _searchController.clear();
+                                    _searchQuery = '';
+                                  });
+                                },
+                              )
+                                  : null,
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    // ФИЛЬТРЫ ПО ТИПУ ТРАНСПОРТА (только если НЕ избранные)
+                    if (!showOnlyFavorites)
+                      Container(
+                        height: 50,
+                        padding: const EdgeInsets.only(left: 20),
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: [
+                            _buildFilterChip(
+                              label: 'Все',
+                              icon: Icons.select_all,
+                              isSelected: _selectedBusTypeFilter == null,
+                              onTap: () {
                                 setModalState(() {
-                                  _searchController.clear();
-                                  _searchQuery = '';
+                                  _selectedBusTypeFilter = null;
                                 });
                               },
-                            )
-                                : null,
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            _buildFilterChip(
+                              label: 'Автобус',
+                              icon: Icons.directions_bus,
+                              color: const Color(0xFF2196F3),
+                              isSelected: _selectedBusTypeFilter == 'bus',
+                              onTap: () {
+                                setModalState(() {
+                                  _selectedBusTypeFilter =
+                                  _selectedBusTypeFilter == 'bus' ? null : 'bus';
+                                });
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            _buildFilterChip(
+                              label: 'Троллейбус',
+                              icon: Icons.directions_bus_filled,
+                              color: const Color(0xFF4CAF50),
+                              isSelected: _selectedBusTypeFilter == 'trolleybus',
+                              onTap: () {
+                                setModalState(() {
+                                  _selectedBusTypeFilter =
+                                  _selectedBusTypeFilter == 'trolleybus' ? null : 'trolleybus';
+                                });
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            _buildFilterChip(
+                              label: 'Электробус',
+                              icon: Icons.ev_station,
+                              color: const Color(0xFF9800),
+                              isSelected: _selectedBusTypeFilter == 'electric_bus',
+                              onTap: () {
+                                setModalState(() {
+                                  _selectedBusTypeFilter =
+                                  _selectedBusTypeFilter == 'electric_bus' ? null : 'electric_bus';
+                                });
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            _buildFilterChip(
+                              label: 'Маршрутка',
+                              icon: Icons.airport_shuttle,
+                              color: const Color(0xFFF44336),
+                              isSelected: _selectedBusTypeFilter == 'minibus',
+                              onTap: () {
+                                setModalState(() {
+                                  _selectedBusTypeFilter =
+                                  _selectedBusTypeFilter == 'minibus' ? null : 'minibus';
+                                });
+                              },
+                            ),
+                            const SizedBox(width: 20),
+                          ],
                         ),
                       ),
-                    ),
-
-                    // ФИЛЬТРЫ ПО ТИПУ ТРАНСПОРТА
-                    Container(
-                      height: 50,
-                      padding: const EdgeInsets.only(left: 20),
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          _buildFilterChip(
-                            label: 'Все',
-                            icon: Icons.select_all,
-                            isSelected: _selectedBusTypeFilter == null,
-                            onTap: () {
-                              setModalState(() {
-                                _selectedBusTypeFilter = null;
-                              });
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterChip(
-                            label: 'Автобус',
-                            icon: Icons.directions_bus,
-                            color: const Color(0xFF2196F3),
-                            isSelected: _selectedBusTypeFilter == 'bus',
-                            onTap: () {
-                              setModalState(() {
-                                _selectedBusTypeFilter =
-                                _selectedBusTypeFilter == 'bus' ? null : 'bus';
-                              });
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterChip(
-                            label: 'Троллейбус',
-                            icon: Icons.directions_bus_filled,
-                            color: const Color(0xFF4CAF50),
-                            isSelected: _selectedBusTypeFilter == 'trolleybus',
-                            onTap: () {
-                              setModalState(() {
-                                _selectedBusTypeFilter =
-                                _selectedBusTypeFilter == 'trolleybus' ? null : 'trolleybus';
-                              });
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterChip(
-                            label: 'Электробус',
-                            icon: Icons.ev_station,
-                            color: const Color(0xFF9800),
-                            isSelected: _selectedBusTypeFilter == 'electric_bus',
-                            onTap: () {
-                              setModalState(() {
-                                _selectedBusTypeFilter =
-                                _selectedBusTypeFilter == 'electric_bus' ? null : 'electric_bus';
-                              });
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterChip(
-                            label: 'Маршрутка',
-                            icon: Icons.airport_shuttle,
-                            color: const Color(0xFFF44336),
-                            isSelected: _selectedBusTypeFilter == 'minibus',
-                            onTap: () {
-                              setModalState(() {
-                                _selectedBusTypeFilter =
-                                _selectedBusTypeFilter == 'minibus' ? null : 'minibus';
-                              });
-                            },
-                          ),
-                          const SizedBox(width: 20),
-                        ],
-                      ),
-                    ),
 
                     const SizedBox(height: 12),
+
                     // Список маршрутов
                     Expanded(
                       child: filteredRoutes.isEmpty
@@ -1154,13 +1177,15 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.search_off,
+                              showOnlyFavorites ? Icons.favorite_border : Icons.search_off,
                               size: 64,
                               color: Colors.grey[300],
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'Ничего не найдено',
+                              showOnlyFavorites
+                                  ? 'Нет избранных маршрутов'
+                                  : 'Ничего не найдено',
                               style: TextStyle(
                                 fontSize: 18,
                                 color: Colors.grey[600],
@@ -1169,7 +1194,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Попробуйте изменить запрос',
+                              showOnlyFavorites
+                                  ? 'Добавьте маршруты нажав на ❤️'
+                                  : 'Попробуйте изменить запрос',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey[400],
@@ -1185,6 +1212,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                         itemBuilder: (context, index) {
                           final route = filteredRoutes[index];
                           final isSelected = _selectedRouteIds.contains(route.id);
+                          final isFavorite = _favoritesService.isFavorite(route.id);
                           final busCount = _busLocations
                               .where((b) => b.routeNumber == route.number)
                               .length;
@@ -1270,11 +1298,50 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                                   ),
                                                 ],
                                               ),
+                                            // КОЛИЧЕСТВО АВТОБУСОВ НА ЛИНИИ
+                                            if (busCount > 0) ...[
+                                              const SizedBox(height: 4),
+                                              Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.directions_bus,
+                                                    size: 14,
+                                                    color: _getBusTypeColor(route.busType),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    'На линии: $busCount',
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                      color: _getBusTypeColor(route.busType),
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
                                           ],
                                         ),
                                       ),
 
                                       const SizedBox(width: 8),
+
+                                      // СЕРДЕЧКО
+                                      IconButton(
+                                        icon: Icon(
+                                          isFavorite ? Icons.favorite : Icons.favorite_border,
+                                          color: isFavorite ? Colors.red : Colors.grey,
+                                          size: 22,
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            _favoritesService.toggleFavorite(route.id);
+                                          });
+                                          setModalState(() {});
+                                        },
+                                      ),
+
+                                      const SizedBox(width: 4),
 
                                       // ГАЛОЧКА
                                       Container(
