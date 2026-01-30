@@ -1,3 +1,5 @@
+# backend/busLocation/models.py
+
 from django.db import models
 from django.core.exceptions import ValidationError
 
@@ -6,6 +8,7 @@ class BusLocation(models.Model):
     """
     Модель местоположения автобуса.
     Хранит GPS-координаты. Каждые 5 секунд создаётся новая запись.
+    ОПТИМИЗИРОВАНО: добавлены дополнительные индексы для ускорения запросов.
     """
     
     bus = models.ForeignKey(
@@ -68,18 +71,25 @@ class BusLocation(models.Model):
         verbose_name_plural = 'Местоположения автобусов'
         ordering = ['-timestamp']
         indexes = [
+            # Существующие индексы
             models.Index(fields=['bus', '-timestamp']),
             models.Index(fields=['shift', '-timestamp']),
             models.Index(fields=['-timestamp']),
+            
+            # НОВЫЕ ОПТИМИЗИРОВАННЫЕ ИНДЕКСЫ
+            # Для запросов с сортировкой по возрастанию
+            models.Index(fields=['shift', 'timestamp'], name='shift_time_asc_idx'),
+            # Композитный индекс для частых запросов
+            models.Index(fields=['timestamp', 'shift'], name='time_shift_idx'),
+            # Для фильтрации активных смен
+            models.Index(fields=['bus', 'timestamp'], name='bus_time_idx'),
         ]
     
     def __str__(self):
         return f"{self.bus.registration_number} - {self.timestamp.strftime('%H:%M:%S')}"
     
     def clean(self):
-        """
-        Валидация координат.
-        """
+        """Валидация координат."""
         if not -90 <= self.latitude <= 90:
             raise ValidationError('Широта должна быть от -90 до 90')
         

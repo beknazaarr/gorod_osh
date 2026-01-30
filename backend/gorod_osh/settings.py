@@ -117,3 +117,14 @@ SIMPLE_JWT = {
 
 # CORS настройки
 CORS_ALLOW_ALL_ORIGINS = True
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'gorod-osh-cache',
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000
+        }
+    }
+}
+DATABASES['default']['CONN_MAX_AGE'] = 600  # 10 минут

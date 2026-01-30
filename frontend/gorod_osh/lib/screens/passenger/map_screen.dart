@@ -23,24 +23,13 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   final FavoritesService _favoritesService = FavoritesService();
   final MapController _mapController = MapController();
 
-  List<RouteModel> _getFilteredRoutes() {
-    if (_searchQuery.isEmpty) {
-      return _routes;
-    }
-
-    return _routes.where((route) {
-      final query = _searchQuery.toLowerCase();
-      return route.number.toLowerCase().contains(query) ||
-          route.name.toLowerCase().contains(query) ||
-          route.startPoint.toLowerCase().contains(query) ||
-          route.endPoint.toLowerCase().contains(query);
-    }).toList();
-  }
-
   List<RouteModel> _routes = [];
   List<BusLocationModel> _busLocations = [];
 
-  // ========== ВЫБРАННЫЕ МАРШРУТЫ ==========
+  // ========== КЭШИРОВАНИЕ МАРШРУТОВ ==========
+  List<Polyline>? _cachedPolylines;
+  Set<int> _lastSelectedIds = {};
+
   Set<int> _selectedRouteIds = {};
   String? _selectedBusTypeFilter;
   List<RouteModel> _selectedRoutes = [];
@@ -49,12 +38,10 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   String? _error;
   Timer? _locationTimer;
 
-  // Геолокация пользователя
   LatLng? _userLocation;
   bool _isLoadingLocation = false;
   StreamSubscription<Position>? _positionStream;
 
-  // Центр Оша
   final LatLng _oshCenter = const LatLng(40.5283, 72.7985);
 
   @override
@@ -73,8 +60,42 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     super.dispose();
   }
 
-  // ========== ГЕОЛОКАЦИЯ ==========
+  // ========== КЭШИРОВАНИЕ POLYLINES ==========
+  List<Polyline> _buildPolylines() {
+    // Проверяем: изменились ли выбранные маршруты?
+    if (_cachedPolylines != null &&
+        _lastSelectedIds.length == _selectedRouteIds.length &&
+        _lastSelectedIds.containsAll(_selectedRouteIds)) {
+      // Возвращаем кэш - не пересчитываем!
+      return _cachedPolylines!;
+    }
 
+    // Только если маршруты изменились - пересчитываем
+    print('🔄 Пересчитываем polylines для ${_selectedRoutes.length} маршрутов');
+
+    _lastSelectedIds = Set.from(_selectedRouteIds);
+    _cachedPolylines = _selectedRoutes
+        .where((route) => route.path.isNotEmpty)
+        .map((route) {
+      List<LatLng> points = route.path.map((point) {
+        return LatLng(
+          point['lat'].toDouble(),
+          point['lng'].toDouble(),
+        );
+      }).toList();
+
+      return Polyline(
+        points: points,
+        strokeWidth: 6.0,
+        color: _getBusTypeColor(route.busType).withOpacity(0.9),
+      );
+    })
+        .toList();
+
+    return _cachedPolylines!;
+  }
+
+  // ========== ГЕОЛОКАЦИЯ ==========
   Future<void> _requestLocationPermission() async {
     setState(() => _isLoadingLocation = true);
 
@@ -158,7 +179,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   }
 
   // ========== ЗАГРУЗКА ДАННЫХ ==========
-
   Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
@@ -169,45 +189,57 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       final routes = await _apiService.getActiveRoutes();
       final locations = await _apiService.getLatestBusLocations();
 
-      setState(() {
-        _routes = routes;
-        _busLocations = locations;
-        _isLoading = false;
-        print('🗺️ Загружено маршрутов: ${_routes.length}');
-        for (var route in _routes) {
-          print('Маршрут ${route.number}: path = ${route.path.length} точек');
-          if (route.path.isNotEmpty) {
-            print('Первая точка: ${route.path.first}');
-          }
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _routes = routes;
+          _busLocations = locations;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _error = 'Ошибка загрузки данных: $e';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = 'Ошибка загрузки данных: $e';
+          _isLoading = false;
+        });
+      }
     }
   }
 
+  // ========== АДАПТИВНОЕ ОБНОВЛЕНИЕ КООРДИНАТ ==========
   void _startLocationUpdates() {
-    _locationTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      _updateBusLocations();
+    // Адаптивный интервал в зависимости от выбранных маршрутов
+    _updateTimerInterval();
+  }
+
+  void _updateTimerInterval() {
+    _locationTimer?.cancel();
+
+    final interval = _selectedRouteIds.isEmpty
+        ? const Duration(seconds: 30)  // Редко если ничего не выбрано
+        : const Duration(seconds: 10);  // Чаще если маршруты выбраны
+
+    _locationTimer = Timer.periodic(interval, (_) async {
+      if (_selectedRouteIds.isNotEmpty && mounted) {
+        await _updateBusLocations();
+      }
     });
   }
 
   Future<void> _updateBusLocations() async {
     try {
       final locations = await _apiService.getLatestBusLocations();
-      setState(() {
-        _busLocations = locations;
-      });
+      if (mounted) {
+        setState(() {
+          _busLocations = locations;
+        });
+      }
     } catch (e) {
       print('Ошибка обновления координат: $e');
     }
   }
 
-  // ========== РАБОТА С ВЫБРАННЫМИ МАРШРУТАМИ ==========
-
+  // ========== РАБОТА С МАРШРУТАМИ ==========
   void _toggleRouteSelection(RouteModel route) {
     setState(() {
       if (_selectedRouteIds.contains(route.id)) {
@@ -217,6 +249,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         _selectedRouteIds.add(route.id);
         _selectedRoutes.add(route);
       }
+      // Обновляем интервал таймера
+      _updateTimerInterval();
     });
   }
 
@@ -224,16 +258,16 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     setState(() {
       _selectedRouteIds.clear();
       _selectedRoutes.clear();
+      _cachedPolylines = null;  // Очищаем кэш
+      _updateTimerInterval();
     });
   }
 
   List<BusLocationModel> _getFilteredBusLocations() {
-    // ЕСЛИ НЕ ВЫБРАНО НИ ОДНОГО МАРШРУТА - НЕ ПОКАЗЫВАЕМ АВТОБУСЫ
     if (_selectedRouteIds.isEmpty) {
-      return []; // Возвращаем пустой список
+      return [];
     }
 
-    // Фильтруем автобусы только по выбранным маршрутам
     return _busLocations.where((bus) {
       final route = _routes.firstWhere(
             (r) => r.number == bus.routeNumber,
@@ -244,18 +278,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   }
 
   Color _getBusTypeColor(String busType) {
-    switch (busType) {
-      case 'bus':
-        return const Color(0xFF2196F3);
-      case 'trolleybus':
-        return const Color(0xFF2196F3);
-      case 'electric_bus':
-        return const Color(0xFF2196F3);
-      case 'minibus':
-        return const Color(0xFF2196F3);
-      default:
-        return const Color(0xFF2196F3);
-    }
+    return const Color(0xFF2196F3);
   }
 
   String _getBusTypeLabel(String busType) {
@@ -327,32 +350,12 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                 keepBuffer: 5,
               ),
 
-              // Линии ТОЛЬКО ВЫБРАННЫХ маршрутов
-              // Линии ТОЛЬКО ВЫБРАННЫХ маршрутов
+              // ========== ОПТИМИЗИРОВАННЫЕ POLYLINES ==========
               PolylineLayer(
-                polylines: _selectedRoutes  // ← ПРОСТО ЭТО, БЕЗ УСЛОВИЯ
-                    .where((route) => route.path.isNotEmpty)
-                    .map((route) {
-
-                  print('🎨 Рисуем маршрут ${route.number}, точек: ${route.path.length}');
-
-                  List<LatLng> points = route.path.map((point) {
-                    return LatLng(
-                      point['lat'].toDouble(),
-                      point['lng'].toDouble(),
-                    );
-                  }).toList();
-
-                  return Polyline(
-                    points: points,
-                    strokeWidth: 6.0,  // ← убрал условие, всегда толстая
-                    color: _getBusTypeColor(route.busType).withOpacity(0.9),  // ← всегда яркая
-                  );
-                }).toList(),
+                polylines: _buildPolylines(),  // Используем кэшированную версию!
               ),
 
-              // Маркеры автобусов (отфильтрованные)
-              // Маркеры автобусов (отфильтрованные)
+              // Маркеры автобусов
               MarkerLayer(
                 markers: filteredBuses.map((bus) {
                   return Marker(
@@ -364,7 +367,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Номер маршрута сверху
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
@@ -388,9 +390,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          // Иконка автобуса с направлением
                           Transform.rotate(
-                            angle: (bus.heading ?? 0) * 3.14159 / 180, // Поворот по направлению
+                            angle: (bus.heading ?? 0) * 3.14159 / 180,
                             child: Container(
                               width: 40,
                               height: 40,
@@ -532,7 +533,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
               ),
             ),
           ),
-
           // ========== КНОПКИ СПРАВА ==========
           // ========== КНОПКИ СПРАВА ==========
           Positioned(
